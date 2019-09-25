@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<behavior startdate="25/09/2019-00:00:00" factor="1">
+
+	<!-- SETUP -->
+
+	<!-- Zone Section -->
+
+	<create-zone  id ="livingroom" leftX ="410" topY ="28" bottomZ ="0" X-Length ="245" Y-Length ="350" Z-Length ="179"/>
+	<add-zone-variable zoneId="livingroom" variable="Temperature" />
+	<modify-zone-variable zoneId="livingroom" variable="Temperature" value="293.15" />
+	<add-zone-variable zoneId="livingroom" variable="Area" />
+	<modify-zone-variable zoneId="livingroom" variable="Area" value="16.807000654220587" />
+	<add-zone-variable zoneId="livingroom" variable="Electricity" />
+	<modify-zone-variable zoneId="livingroom" variable="Electricity" value="0.0" />
+	<add-zone-variable zoneId="livingroom" variable="Volume" />
+	<modify-zone-variable zoneId="livingroom" variable="Volume" value="42.11834434472661" />
+	<add-zone-variable zoneId="livingroom" variable="Illuminance" />
+	<modify-zone-variable zoneId="livingroom" variable="Illuminance" value="200.0" />
+
+	<create-zone  id ="kitchen" leftX ="410" topY ="370" bottomZ ="0" X-Length ="245" Y-Length ="210" Z-Length ="179"/>
+	<add-zone-variable zoneId="kitchen" variable="Temperature" />
+	<modify-zone-variable zoneId="kitchen" variable="Temperature" value="293.15" />
+	<add-zone-variable zoneId="kitchen" variable="Area" />
+	<modify-zone-variable zoneId="kitchen" variable="Area" value="10.084200392532352" />
+	<add-zone-variable zoneId="kitchen" variable="Electricity" />
+	<modify-zone-variable zoneId="kitchen" variable="Electricity" value="100.0" />
+	<add-zone-variable zoneId="kitchen" variable="Volume" />
+	<modify-zone-variable zoneId="kitchen" variable="Volume" value="25.271006606835964" />
+	<add-zone-variable zoneId="kitchen" variable="Illuminance" />
+	<modify-zone-variable zoneId="kitchen" variable="Illuminance" value="6972.971002315006" />
+
+	<create-zone  id ="bedroom" leftX ="55" topY ="370" bottomZ ="0" X-Length ="259" Y-Length ="210" Z-Length ="179"/>
+	<add-zone-variable zoneId="bedroom" variable="Temperature" />
+	<modify-zone-variable zoneId="bedroom" variable="Temperature" value="293.15" />
+	<add-zone-variable zoneId="bedroom" variable="Area" />
+	<modify-zone-variable zoneId="bedroom" variable="Area" value="10.660440695343027" />
+	<add-zone-variable zoneId="bedroom" variable="Electricity" />
+	<modify-zone-variable zoneId="bedroom" variable="Electricity" value="0.0" />
+	<add-zone-variable zoneId="bedroom" variable="Volume" />
+	<modify-zone-variable zoneId="bedroom" variable="Volume" value="26.715064829859518" />
+	<add-zone-variable zoneId="bedroom" variable="Illuminance" />
+	<modify-zone-variable zoneId="bedroom" variable="Illuminance" value="200.0" />
+
+	<create-zone  id ="bathroom" leftX ="55" topY ="20" bottomZ ="0" X-Length ="260" Y-Length ="350" Z-Length ="179"/>
+	<add-zone-variable zoneId="bathroom" variable="Temperature" />
+	<modify-zone-variable zoneId="bathroom" variable="Temperature" value="293.15" />
+	<add-zone-variable zoneId="bathroom" variable="Area" />
+	<modify-zone-variable zoneId="bathroom" variable="Area" value="17.836000861167918" />
+	<add-zone-variable zoneId="bathroom" variable="Electricity" />
+	<modify-zone-variable zoneId="bathroom" variable="Electricity" value="100.0" />
+	<add-zone-variable zoneId="bathroom" variable="Volume" />
+	<modify-zone-variable zoneId="bathroom" variable="Volume" value="44.69701890651518" />
+	<add-zone-variable zoneId="bathroom" variable="Illuminance" />
+	<modify-zone-variable zoneId="bathroom" variable="Illuminance" value="4029.333836370323" />
+
+	<!-- Device Section -->
+
+	<create-device id="BiLi-C7496W-S" type="iCasa.BinaryLight" />
+	<move-device-zone deviceId="BiLi-C7496W-S" zoneId="bedroom" />
+
+	<create-device id="BiLi-A7496W-S" type="iCasa.BinaryLight" />
+	<move-device-zone deviceId="BiLi-A7496W-S" zoneId="kitchen" />
+
+	<create-device id="BiLi-B7496W-S" type="iCasa.BinaryLight" />
+	<move-device-zone deviceId="BiLi-B7496W-S" zoneId="livingroom" />
+	<set-device-property deviceId="BiLi-B7496W-S" property="powerStatus" value="true"/>
+
+	<create-device id="Toogle-A1286X-Y" type="iCasa.ToggleSwitch" />
+	<move-device-zone deviceId="Toogle-A1286X-Y" zoneId="kitchen" />
+
+	<create-device id="Toogle-B1286X-Y" type="iCasa.ToggleSwitch" />
+	<move-device-zone deviceId="Toogle-B1286X-Y" zoneId="livingroom" />
+
+	<create-device id="Toogle-C1286X-Y" type="iCasa.ToggleSwitch" />
+	<move-device-zone deviceId="Toogle-C1286X-Y" zoneId="bedroom" />
+
+	<create-device id="Toogle-D1286X-Y" type="iCasa.ToggleSwitch" />
+	<move-device-zone deviceId="Toogle-D1286X-Y" zoneId="bathroom" />
+
+	<create-device id="Pres-D1255D-D" type="iCasa.PresenceSensor" />
+	<move-device-zone deviceId="Pres-D1255D-D" zoneId="bathroom" />
+
+	<create-device id="Pres-A1255D-D" type="iCasa.PresenceSensor" />
+	<move-device-zone deviceId="Pres-A1255D-D" zoneId="kitchen" />
+
+	<create-device id="Pres-B1255D-D" type="iCasa.PresenceSensor" />
+	<move-device-zone deviceId="Pres-B1255D-D" zoneId="livingroom" />
+
+	<create-device id="Pres-C1255D-D" type="iCasa.PresenceSensor" />
+	<move-device-zone deviceId="Pres-C1255D-D" zoneId="bedroom" />
+
+	<create-device id="BiLi-D7496W-S" type="iCasa.BinaryLight" />
+	<move-device-zone deviceId="BiLi-D7496W-S" zoneId="bathroom" />
+
+	<create-device id="PresenceSensor-c8d797c0bd" type="iCasa.PresenceSensor" />
+	<move-device-zone deviceId="PresenceSensor-c8d797c0bd" zoneId="bathroom" />
+
+	<!-- Person Section -->
+
+	<create-person id="Marie" type="Girl" />
+	<move-person-zone personId="Marie" zoneId="kitchen" />
+
+	<!-- SIMULATION -->
+
+	<!-- Testing taking a shower normally -->
+
+	<delay value="5" unit="s" />
+	<!-- Presencia en el bedroom -->
+	<set-device-property deviceId="Pres-C1255D-D" property="presenceSensor.sensedPresence" value="true"/>
+	<!-- Enciendo la luz -->
+	<set-device-property deviceId="BiLi-C7496W-S" property="binaryLight.powerStatus" value="true"/>
+	<modify-zone-variable zoneId="kitchen" variable="Illuminance" value="205.2" />
+	<!-- Cocinando -->
+	<delay value="25" unit="m" />
+	<!-- Apagando estufa -->
+	<modify-zone-variable zoneId="kitchen" variable="Temperature" value="293.15" />
+	<modify-zone-variable zoneId="kitchen" variable="Electricity" value="0.0" />
+	<modify-zone-variable zoneId="kitchen" variable="Illuminance" value="200.0" />
+	<!-- Me voy a comer -->
+	<move-person-zone personId="Marie" zoneId="livingroom" />
+	<move-device-zone deviceId="Toogle-A1286X-Y" zoneId="livingroom" />
+	<set-device-property deviceId="Pres-A1255D-D" property="presenceSensor.sensedPresence" value="false"/>
+	<set-device-property deviceId="Pres-B1255D-D" property="presenceSensor.sensedPresence" value="true"/>
+
+</behavior>
