@@ -108,12 +108,30 @@ def event_generator(d_list, e_list):
 			min_distance = min([x.position for x in prev_events])
 			closest_event = [x for x in prev_events if x.position == min_distance][0]
 			executer = closest_event.executer
+			if (d['unit'] == 's'):
+				value = int(d['value'])
+				time_unit = datetime.timedelta(seconds=value)
+			elif (d['unit'] == 'm'):
+				value = int(d['value'])
+				time_unit = datetime.timedelta(minutes=value)
+			else:
+				value = int(d['value'])
+				time_unit = datetime.timedelta(hours=value)
 			e_list.append(TimeEvent(executer, d['orden'], d['unit'], \
-				d['value'], d['expr']))
+				time_unit, d['expr']))
 		# Si no hay nada antes del delay
 		except:
+			if (d['unit'] == 's'):
+				value = int(d['value'])
+				time_unit = datetime.timedelta(seconds=value)
+			elif (d['unit'] == 'm'):
+				value = int(d['value'])
+				time_unit = datetime.timedelta(minutes=value)
+			else:
+				value = int(d['value'])
+				time_unit = datetime.timedelta(hours=value)
 			e_list.append(TimeEvent(None, d['orden'], d['unit'], \
-				d['value'], d['expr']))
+				time_unit, d['expr']))
 
 # Funcion positionOrdering
 # Funciona de key para el sort()
@@ -220,16 +238,13 @@ class VarChangingEvent(Event):
 		self.event = event
 		self.change = change
 
-# Clase TimeEvent
+# Clase TimeEvent - Subclase de Event
 # Modela los delays del simulador
 #
 # @attrs
-#    executer: sujeto involucrado con la accion
-#    position: posicion del evento
 #    unit: unidad de tiempo
 #    value: cantidad de unidades de tiempo
-#    event: evento
-class TimeEvent:
+class TimeEvent(Event):
 
 	# Inicializador
 	def __init__(self, executer, position, unit, value, event):
@@ -339,12 +354,14 @@ def main(argv):
 		dlist = []
 		plist = []
 		tlist = []
+		slist = []
 
 		# Listas de instancias de clases para cada elemento
 		pclass = []
 		dclass = []
 		zclass = []
 		eclass = []
+		sclass = []
 
 		# Lleno listas de todas las zones, devices, people y delays
 		for child in behavior:
@@ -630,8 +647,17 @@ def main(argv):
 		# Si no hay eventos creados aun
 		else:
 			# Creo primer evento delay
+			if (tlist[0]['unit'] == 's'):
+				value = int(tlist[0]['value'])
+				time_unit = datetime.timedelta(seconds=value)
+			elif (tlist[0]['unit'] == 'm'):
+				value = int(tlist[0]['value'])
+				time_unit = datetime.timedelta(minutes=value)
+			else:
+				value = int(tlist[0]['value'])
+				time_unit = datetime.timedelta(hours=value)
 			eclass.append(TimeEvent(None, tlist[0]['orden'], tlist[0]['unit'], \
-				tlist[0]['value'], tlist[0]['expr']))
+				time_unit, tlist[0]['expr']))
 			# Llamo al event_generator sin contar el primer elemento de la lista
 			if (len(tlist) > 1):
 				event_generator(tlist[1:], eclass)
@@ -639,10 +665,34 @@ def main(argv):
 		#for child in behavior:
 		#	print('Veamos, %s con orden %s\n'  % (child.tag, child.attrib['orden']))
 
+		# Ordenando segun posicion 
 		eclass.sort(key=positionOrdering)
-		for elem in eclass:
-			print(elem)
 
+		# GENERANDO SITUACIONES
+
+		# Contador
+		counter = 0
+		# Aux sera lista de indices de eclass donde hay fin de actividad
+		aux = []
+		for elem in eclass:
+			if (isinstance(elem, TimeEvent)):
+				if (elem.value == datetime.timedelta(0) and elem.unit == 's'):
+					aux.append(counter)
+			counter = counter + 1
+
+		# Formo subconjuntos de eventos que seran situaciones
+		start = 0
+		for elem in aux:
+			slist.append(eclass[start:elem])
+			start = elem + 1
+
+		# Genero lista de instancias de situaciones
+		for elem in slist:
+			size = len(elem)
+			sclass.append(Situation(elem[0], elem[1:size - 1], elem[size - 1]))
+
+		# TENGO TODAS LAS SITUACIONES DEL SCRIPT DE SIMULACION
+	
 		for zone in zones:
 			print("Zona: %s\n" % (zone.attrib['id']))
 
