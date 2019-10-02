@@ -18,6 +18,9 @@ import sys
 import datetime
 import time
 
+# Funcion reduce
+from functools import reduce
+
 # Aniadir en este bloque
 
 #################################
@@ -51,6 +54,13 @@ TRANSPORTATION = 'A'
 PURCHASES = 'A'
 MEDICAL_TREATMENT = 'A'
 LEISURE_ACTS = 'A'
+
+#################################
+# Constantes varias             #
+#################################
+
+# Maximo tiempo encendido de una luz (8 horas)
+MAX_TIME_LIGHT_ON = datetime.time(8, 0, 0)
 
 #################################
 # Funciones utiles              #
@@ -228,7 +238,7 @@ class Event:
 # Modela cambios de variables en zonas
 #
 # @attrs
-#    change: dict de variable/valor modificado
+#    change: dict de variable/value modificado
 class VarChangingEvent(Event):
 
 	# Inicializador
@@ -355,6 +365,7 @@ def main(argv):
 		plist = []
 		tlist = []
 		slist = []
+		elist = []
 
 		# Listas de instancias de clases para cada elemento
 		pclass = []
@@ -692,7 +703,97 @@ def main(argv):
 			sclass.append(Situation(elem[0], elem[1:size - 1], elem[size - 1]))
 
 		# TENGO TODAS LAS SITUACIONES DEL SCRIPT DE SIMULACION
-	
+
+		# Analizamos situaciones para hallar posibles problemas
+		for s in sclass:
+			eventos = s.get_mid_events()
+			for e in eventos:
+				if (isinstance(e, PropertyChangingEvent)):
+					# 1. Si hay inundacion
+					if (e.device.type_name == 'iCasa.FloodSensor' and \
+						e.changedProperty['value'] == 'true'):
+						elist.append({'position': e.position, 'executer': e.executer, \
+							'error': 'FloodSensor detected a problem'})
+						# Testing message
+						print('FloodSensor detected a problem')
+					# 2. Luces siempre encendidas
+					# 2.1 Binary Lights
+					elif (e.device.type_name == 'iCasa.BinaryLight' and \
+						e.changedProperty['property'] == 'binaryLight.powerStatus' and \
+						e.changedProperty['value'] == 'true'):
+						# Revisamos por cuanto tiempo la luz estuvo encendida
+						light_off = [x for x in eventos if isinstance(x, PropertyChangingEvent) and \
+									x.position > e.position and \
+									x.changedProperty['property'] == 'binaryLight.powerStatus' and \
+									e.changedProperty['value'] == 'false' and \
+									e.device.name == x.device.name]
+						# Si fue apagado
+						if (len(light_off) > 0):
+							light_off_position == light_off[0].position
+							delays = [x.value for x in eventos if isinstance(x, TimeEvent) and \
+							x.position > e.position and x.position < light_off_position]
+							# Tiempo que se mantuvo encendido
+							time_since_on = (datetime.datetime.min + reduce((lambda x, y: x + y), delays)).time()
+							# Si excede tiempo maximo, hay problemas
+							if (time_since_on > MAX_TIME_LIGHT_ON):
+								elist.append({'position': e.position, 'executer': e.executer, \
+									'error': 'BinaryLight exceeded MAX ON time'})
+						# Si no apagaron la luz, revisamos el tiempo que estuvo encendida en la sim
+						else:
+							delays = [x.value for x in eventos if isinstance(x, TimeEvent) and \
+							x.position > e.position]
+							if (len(delays) > 0):
+								# Tiempo que se mantuvo encendido
+								time_since_on = (datetime.datetime.min + reduce((lambda x, y: x + y), delays)).time()
+							else:
+								time_since_on = (datetime.datetime.min).time()
+							# Si excede tiempo maximo, hay problemas
+							if (time_since_on > MAX_TIME_LIGHT_ON):
+								elist.append({'position': e.position, 'executer': e.executer, \
+									'error': 'BinaryLight exceeded MAX ON time'})
+					# 2.2 Dimmer Lights
+					elif (e.device.type_name == 'iCasa.DimmerLight' and \
+						e.changedProperty['property'] == 'dimmerLight.powerLevel' and \
+						float(e.changedProperty['value']) >= 0):
+						elist.append({'position': e.position, 'executer': e.executer, \
+							'error': 'DimmerLight is ON'})
+						# Luego debemos ver si se apago y en cuanto tiempo
+					# 3. Altas/bajas temperaturas 
+					elif (e.device.type_name == 'iCasa.Heater' and \
+						e.changedProperty['property'] == 'heater.powerLevel' and \
+						float(e.changedProperty['value']) >= 0):
+						elist.append({'position': e.position, 'executer': e.executer, \
+							'error': 'Heater is ON'})
+						# Chequear si fue apagado
+					elif (e.device.type_name == 'iCasa.Cooler' and \
+						e.changedProperty['property'] == 'cooler.powerLevel' and \
+						float(e.changedProperty['value']) >= 0):
+						elist.append({'position': e.position, 'executer': e.executer, \
+							'error': 'Cooler is ON'})
+						# Chequear si fue apagado
+					# 4. Altos niveles de CO/CO2
+					elif (e.device.type_name == 'iCasa.CO2GasSensor' and \
+						e.changedProperty['property'] == 'carbonMonoxydeSensor.currentConcentration' and \
+						float(e.changedProperty['value']) >= 9000):
+						elist.append({'position': e.position, 'executer': e.executer, \
+							'error': 'HIGH CO CONCENTRATION'})
+					elif (e.device.type_name == 'iCasa.COGasSensor' and \
+						e.changedProperty['property'] == 'carbonDioxydeSensor.currentConcentration' and \
+						float(e.changedProperty['value']) > 1000000):
+						elist.append({'position': e.position, 'executer': e.executer, \
+							'error': 'HIGH CO2 CONCENTRATION'})
+					# 5. Puerta principal abierta mucho tiempo
+					elif (e.device.type_name == 'iCasa.DoorWindowSensor' and \
+						e.changedProperty['value'] == 'true'):
+						elist.append({'position': e.position, 'executer': e.executer, \
+							'error': 'MAIN DOOR LET OPENED'})
+						# Revisar cuanto tiempo estuvo abierta la puerta
+					# 6. Sirena encendida
+					elif (e.device.type_name == 'iCasa.Siren' and \
+						e.changedProperty['value'] == 'true'):
+						elist.append({'position': e.position, 'executer': e.executer, \
+							'error': 'SIREN RINGING'})
+					# 7. 
 		for zone in zones:
 			print("Zona: %s\n" % (zone.attrib['id']))
 
