@@ -151,6 +151,102 @@ def event_generator(d_list, e_list):
 def positionOrdering(event):
 	return event.position
 
+# Funcion deviceTimeOn
+# Aniade a lista de errores aquellos eventos que excedieron tiempo max de device on
+# @args
+#    events: lista de eventos a revisar en busca de turn off
+#    e: evento puntual de turn on
+
+def deviceTimeOn(events, e):
+	# Depende del tipo de device, tendremos diferentes chequeos a realizar
+	if (e.device.type_name == 'iCasa.DimmerLight'):
+		# Si es una dimmer light
+		device_off = [x for x in events if isinstance(x, PropertyChangingEvent) and \
+				x.position > e.position and \
+				x.changedProperty['property'] == 'dimmerLight.powerLevel' and \
+				float(e.changedProperty['value']) == 0 and \
+				e.device.name == x.device.name]
+	elif (e.device.type_name == 'iCasa.Heater'):
+		# Si  es un heater
+		device_off = [x for x in events if isinstance(x, PropertyChangingEvent) and \
+				x.position > e.position and \
+				x.changedProperty['property'] == 'heater.powerLevel' and \
+				float(e.changedProperty['value']) == 0 and \
+				e.device.name == x.device.name]
+	elif (e.device.type_name == 'iCasa.Cooler'):
+		# Si es un cooler
+		device_off = [x for x in events if isinstance(x, PropertyChangingEvent) and \
+				x.position > e.position and \
+				x.changedProperty['property'] == 'cooler.powerLevel' and \
+				float(e.changedProperty['value']) == 0 and \
+				e.device.name == x.device.name]
+	else:
+		# Si es binary light
+		device_off = [x for x in events if isinstance(x, PropertyChangingEvent) and \
+				x.position > e.position and \
+				x.changedProperty['property'] == 'binaryLight.powerStatus' and \
+				e.changedProperty['value'] == 'false' and \
+				e.device.name == x.device.name]
+
+	# Si fue apagado
+	if (len(device_off) > 0):
+		device_off_position == device_off[0].position
+		delays = [x.value for x in events if isinstance(x, TimeEvent) and \
+		x.position > e.position and x.position < device_off_position]
+		# Tiempo que se mantuvo encendido
+		time_since_on = (datetime.datetime.min + reduce((lambda x, y: x + y), delays)).time()
+		# Si excede tiempo maximo, hay problemas
+		if (e.device.type_name == 'iCasa.DimmerLight'):
+			# Si es dimmer light
+			if (time_since_on > MAX_TIME_LIGHT_ON):
+				elist.append({'position': e.position, 'executer': e.executer, \
+					'error': 'DimmerLight exceeded MAX ON time'})
+		elif (e.device.type_name == 'iCasa.Heater'):
+			# Si es heater
+			if (time_since_on > MAX_TIME_LIGHT_ON):
+				elist.append({'position': e.position, 'executer': e.executer, \
+					'error': 'Heater exceeded MAX ON time'})
+		elif (e.device.type_name == 'iCasa.Cooler'):
+			# Si es cooler
+			if (time_since_on > MAX_TIME_LIGHT_ON):
+				elist.append({'position': e.position, 'executer': e.executer, \
+					'error': 'Cooler exceeded MAX ON time'})
+		else:
+			# Si es binary light
+			if (time_since_on > MAX_TIME_LIGHT_ON):
+				elist.append({'position': e.position, 'executer': e.executer, \
+					'error': 'BinaryLight exceeded MAX ON time'})
+
+	# Si no apagaron el device, revisamos el tiempo que estuvo encendido en la sim
+	else:
+		delays = [x.value for x in events if isinstance(x, TimeEvent) and \
+		x.position > e.position]
+		if (len(delays) > 0):
+			# Tiempo que se mantuvo encendido
+			time_since_on = (datetime.datetime.min + reduce((lambda x, y: x + y), delays)).time()
+		else:
+			time_since_on = (datetime.datetime.min).time()
+		# Si excede tiempo maximo, hay problemas
+		if (e.device.type_name == 'iCasa.DimmerLight'):
+			# Si es dimmer light
+			if (time_since_on > MAX_TIME_LIGHT_ON):
+				elist.append({'position': e.position, 'executer': e.executer, \
+					'error': 'DimmerLight exceeded MAX ON time'})
+		elif (e.device.type_name == 'iCasa.Heater'):
+			# Si es heater
+			if (time_since_on > MAX_TIME_LIGHT_ON):
+				elist.append({'position': e.position, 'executer': e.executer, \
+					'error': 'Heater exceeded MAX ON time'})
+		elif (e.device.type_name == 'iCasa.Cooler'):
+			# Si es cooler
+			if (time_since_on > MAX_TIME_LIGHT_ON):
+				elist.append({'position': e.position, 'executer': e.executer, \
+					'error': 'Cooler exceeded MAX ON time'})
+		else:
+			# Si es binary light
+			if (time_since_on > MAX_TIME_LIGHT_ON):
+				elist.append({'position': e.position, 'executer': e.executer, \
+					'error': 'BinaryLight exceeded MAX ON time'})
 
 #################################
 # Clases                        #
@@ -721,62 +817,34 @@ def main(argv):
 					elif (e.device.type_name == 'iCasa.BinaryLight' and \
 						e.changedProperty['property'] == 'binaryLight.powerStatus' and \
 						e.changedProperty['value'] == 'true'):
-						# Revisamos por cuanto tiempo la luz estuvo encendida
-						light_off = [x for x in eventos if isinstance(x, PropertyChangingEvent) and \
-									x.position > e.position and \
-									x.changedProperty['property'] == 'binaryLight.powerStatus' and \
-									e.changedProperty['value'] == 'false' and \
-									e.device.name == x.device.name]
-						# Si fue apagado
-						if (len(light_off) > 0):
-							light_off_position == light_off[0].position
-							delays = [x.value for x in eventos if isinstance(x, TimeEvent) and \
-							x.position > e.position and x.position < light_off_position]
-							# Tiempo que se mantuvo encendido
-							time_since_on = (datetime.datetime.min + reduce((lambda x, y: x + y), delays)).time()
-							# Si excede tiempo maximo, hay problemas
-							if (time_since_on > MAX_TIME_LIGHT_ON):
-								elist.append({'position': e.position, 'executer': e.executer, \
-									'error': 'BinaryLight exceeded MAX ON time'})
-						# Si no apagaron la luz, revisamos el tiempo que estuvo encendida en la sim
-						else:
-							delays = [x.value for x in eventos if isinstance(x, TimeEvent) and \
-							x.position > e.position]
-							if (len(delays) > 0):
-								# Tiempo que se mantuvo encendido
-								time_since_on = (datetime.datetime.min + reduce((lambda x, y: x + y), delays)).time()
-							else:
-								time_since_on = (datetime.datetime.min).time()
-							# Si excede tiempo maximo, hay problemas
-							if (time_since_on > MAX_TIME_LIGHT_ON):
-								elist.append({'position': e.position, 'executer': e.executer, \
-									'error': 'BinaryLight exceeded MAX ON time'})
+						# Determino si hay problemas con la funcion adecuada
+						deviceTimeOn(eventos, e)
 					# 2.2 Dimmer Lights
 					elif (e.device.type_name == 'iCasa.DimmerLight' and \
 						e.changedProperty['property'] == 'dimmerLight.powerLevel' and \
 						float(e.changedProperty['value']) >= 0):
-						elist.append({'position': e.position, 'executer': e.executer, \
-							'error': 'DimmerLight is ON'})
-						# Luego debemos ver si se apago y en cuanto tiempo
-					# 3. Altas/bajas temperaturas 
+						# Determino si hay problemas con la funcion adecuada
+						deviceTimeOn(eventos, e)
+					# 3. Altas/bajas temperaturas
+					# 3.1 Heater
 					elif (e.device.type_name == 'iCasa.Heater' and \
 						e.changedProperty['property'] == 'heater.powerLevel' and \
 						float(e.changedProperty['value']) >= 0):
-						elist.append({'position': e.position, 'executer': e.executer, \
-							'error': 'Heater is ON'})
-						# Chequear si fue apagado
+						# Determino si hay problemas con la funcion adecuada
+						deviceTimeOn(eventos, e)
 					elif (e.device.type_name == 'iCasa.Cooler' and \
 						e.changedProperty['property'] == 'cooler.powerLevel' and \
 						float(e.changedProperty['value']) >= 0):
-						elist.append({'position': e.position, 'executer': e.executer, \
-							'error': 'Cooler is ON'})
-						# Chequear si fue apagado
+						# Determino si hay problema con la funcion adecuada
+						deviceTimeOn(eventos, e)
 					# 4. Altos niveles de CO/CO2
+					# 4.1 CO2
 					elif (e.device.type_name == 'iCasa.CO2GasSensor' and \
 						e.changedProperty['property'] == 'carbonMonoxydeSensor.currentConcentration' and \
 						float(e.changedProperty['value']) >= 9000):
 						elist.append({'position': e.position, 'executer': e.executer, \
 							'error': 'HIGH CO CONCENTRATION'})
+					# 4.2 CO
 					elif (e.device.type_name == 'iCasa.COGasSensor' and \
 						e.changedProperty['property'] == 'carbonDioxydeSensor.currentConcentration' and \
 						float(e.changedProperty['value']) > 1000000):
