@@ -62,6 +62,31 @@ LEISURE_ACTS = 'A'
 # Maximo tiempo encendido de una luz (8 horas)
 MAX_TIME_LIGHT_ON = datetime.time(8, 0, 0)
 
+# Maximo tiempo encendido de una heater/cooler
+MAX_TIME_HEAT_COOL_ON = datetime.time(12, 0, 0)
+
+# Temperatura minima aceptable para activar heater (en kelvin)
+# 12 celsius
+MIN_TEMPERATURE = 285.15
+
+# Temperatura minima aceptable para activar cooler (en kelvin)
+# 30 celsius
+MAX_TEMPERATURE = 303.15
+
+# Tiempo minimo para ir a dormir
+MIN_SLEEPING_TIME = datetime.time(20, 0, 0)
+
+# Dia
+DAYTIME_MIN = datetime.time(6, 0, 0)
+DAYTIME_MAX = datetime.time(19, 59, 59)
+
+# Noche
+NIGHTTIME_MIN = datetime.time(20, 0, 0)
+NIGHTTIME_MAX = datetime.time(5, 59, 59)
+
+# Tiempo maximo consecutivo a estar de dia en bedroom
+MAX_STUCK_BEDROOM_TIME = datetime.time(2, 0, 0)
+
 #################################
 # Funciones utiles              #
 #################################
@@ -156,8 +181,9 @@ def positionOrdering(event):
 # @args
 #    events: lista de eventos a revisar en busca de turn off
 #    e: evento puntual de turn on
+#    error_list: lista de errores al cual aniadir nuevos
 
-def deviceTimeOn(events, e):
+def deviceTimeOn(events, e, error_list):
 	# Depende del tipo de device, tendremos diferentes chequeos a realizar
 	if (e.device.type_name == 'iCasa.DimmerLight'):
 		# Si es una dimmer light
@@ -199,22 +225,22 @@ def deviceTimeOn(events, e):
 		if (e.device.type_name == 'iCasa.DimmerLight'):
 			# Si es dimmer light
 			if (time_since_on > MAX_TIME_LIGHT_ON):
-				elist.append({'position': e.position, 'executer': e.executer, \
+				error_list.append({'position': e.position, 'executer': e.executer, \
 					'error': 'DimmerLight exceeded MAX ON time'})
 		elif (e.device.type_name == 'iCasa.Heater'):
 			# Si es heater
 			if (time_since_on > MAX_TIME_LIGHT_ON):
-				elist.append({'position': e.position, 'executer': e.executer, \
+				error_list.append({'position': e.position, 'executer': e.executer, \
 					'error': 'Heater exceeded MAX ON time'})
 		elif (e.device.type_name == 'iCasa.Cooler'):
 			# Si es cooler
 			if (time_since_on > MAX_TIME_LIGHT_ON):
-				elist.append({'position': e.position, 'executer': e.executer, \
+				error_list.append({'position': e.position, 'executer': e.executer, \
 					'error': 'Cooler exceeded MAX ON time'})
 		else:
 			# Si es binary light
 			if (time_since_on > MAX_TIME_LIGHT_ON):
-				elist.append({'position': e.position, 'executer': e.executer, \
+				error_list.append({'position': e.position, 'executer': e.executer, \
 					'error': 'BinaryLight exceeded MAX ON time'})
 
 	# Si no apagaron el device, revisamos el tiempo que estuvo encendido en la sim
@@ -230,23 +256,52 @@ def deviceTimeOn(events, e):
 		if (e.device.type_name == 'iCasa.DimmerLight'):
 			# Si es dimmer light
 			if (time_since_on > MAX_TIME_LIGHT_ON):
-				elist.append({'position': e.position, 'executer': e.executer, \
+				error_list.append({'position': e.position, 'executer': e.executer, \
 					'error': 'DimmerLight exceeded MAX ON time'})
 		elif (e.device.type_name == 'iCasa.Heater'):
 			# Si es heater
-			if (time_since_on > MAX_TIME_LIGHT_ON):
-				elist.append({'position': e.position, 'executer': e.executer, \
+			if (time_since_on > MAX_TIME_HEAT_COOL_ON):
+				error_list.append({'position': e.position, 'executer': e.executer, \
 					'error': 'Heater exceeded MAX ON time'})
 		elif (e.device.type_name == 'iCasa.Cooler'):
 			# Si es cooler
-			if (time_since_on > MAX_TIME_LIGHT_ON):
-				elist.append({'position': e.position, 'executer': e.executer, \
+			if (time_since_on > MAX_TIME_HEAT_COOL_ON):
+				error_list.append({'position': e.position, 'executer': e.executer, \
 					'error': 'Cooler exceeded MAX ON time'})
 		else:
 			# Si es binary light
 			if (time_since_on > MAX_TIME_LIGHT_ON):
-				elist.append({'position': e.position, 'executer': e.executer, \
+				error_list.append({'position': e.position, 'executer': e.executer, \
 					'error': 'BinaryLight exceeded MAX ON time'})
+
+# Funcion possibleSedentarism
+# Analiza patrones de tiempo para hallar problemas con no salir de la habitacion
+# pues no hay moves futuros
+# @args
+#    events: lista de eventos a recorrer para comparaciones
+#    e: evento move inicial
+#    current_time: tiempo actual de la simulacion diferente del base
+#    error_list: lista de errores al cual aniadir nuevos
+
+def possibleSedentarism(events, e, current_time, error_list):
+	# Hallamos tiempo en reposo
+	delays_post_move = [x.value for x in events if isinstance(x, TimeEvent) and \
+			x.position > e.position]
+	if (len(delays_post_move) > 0):
+		time_post_move = reduce((lambda x, y: x + y), delays_post_move)
+		# Tiempo sin moverme a otro lado sin aniadir current time
+		stuck_time = (datetime.datetime.min + time_post_move).time()
+		# Tiempo en habitacion sin moverme a otro lado contando tiempo actual
+		lazy_time = current_time + time_post_move
+		lazy_time = (datetime.datetime.min + lazy_time).time()
+		# Si es de dia y estuve muchas horas encerrado sin salir
+		if (DAYTIME_MIN < lazy_time and DAYTIME_MAX > lazy_time and \
+			stuck_time > MAX_STUCK_BEDROOM_TIME):
+			error_list.append({'position': e.position, 'executer': e.executer, \
+				'error': 'Not getting out of room for much time'})
+	else:
+		# En este caso, no hay suficiente info para sugerir sedentarismo
+		print('Not enough data to suggest sedentarism')
 
 #################################
 # Clases                        #
@@ -329,6 +384,24 @@ class Event:
 	def __str__(self):
 		return '{self.event} en posicion {self.position} relacionado con '.format(self=self) \
 		+ 'persona {self.executer}'.format(self=self)
+
+# Clase MoveEvent - Subclase de Event
+# Modela movimientos de zonas para personas
+#
+# @attrs
+#    zone: zone a la cual se envia a la persona
+class MoveEvent(Event):
+
+	# Inicializador
+	def __init__(self, executer, position, event, zone):
+		self.executer = executer
+		self.position = position
+		self.event = event
+		self.zone = zone
+
+	def __str__(self):
+		return '{self.event} en posicion {self.position} relacionado con '.format(self=self) \
+		+ 'persona {self.executer} a zona {self.zone}'.format(self=self)
 
 # Clase VarChangingEvent - Subclase de Event
 # Modela cambios de variables en zonas
@@ -444,7 +517,8 @@ def main(argv):
 			secs = int(time_sim.split(':')[2])
 			time_sim = datetime.timedelta(hours=hrs, minutes=mins, seconds=secs)
 		except:
-			print('No starting time given.')
+			print('No starting time given. Setting default: 00:00:00')
+			time_sim = datetime.timedelta(hours=0, minutes=0, seconds=0)
 
 		# Numerando acciones
 		numerador(behavior)
@@ -744,7 +818,8 @@ def main(argv):
 			for child in behavior:
 				if (child.tag == 'move-person-zone'):
 					executer = [x for x in pclass if x.name == child.attrib['personId']][0]
-					eclass.append(Event(executer, child.attrib['orden'], child.tag))
+					zone = [x for x in zclass if x.name == child.attrib['zoneId']][0]
+					eclass.append(MoveEvent(executer, child.attrib['orden'], child.tag, zone))
 
 		# CASO x: delay - DEBE IR AL FINAL
 
@@ -818,25 +893,35 @@ def main(argv):
 						e.changedProperty['property'] == 'binaryLight.powerStatus' and \
 						e.changedProperty['value'] == 'true'):
 						# Determino si hay problemas con la funcion adecuada
-						deviceTimeOn(eventos, e)
+						deviceTimeOn(eventos, e, elist)
 					# 2.2 Dimmer Lights
 					elif (e.device.type_name == 'iCasa.DimmerLight' and \
 						e.changedProperty['property'] == 'dimmerLight.powerLevel' and \
 						float(e.changedProperty['value']) >= 0):
 						# Determino si hay problemas con la funcion adecuada
-						deviceTimeOn(eventos, e)
+						deviceTimeOn(eventos, e, elist)
 					# 3. Altas/bajas temperaturas
 					# 3.1 Heater
 					elif (e.device.type_name == 'iCasa.Heater' and \
 						e.changedProperty['property'] == 'heater.powerLevel' and \
 						float(e.changedProperty['value']) >= 0):
 						# Determino si hay problemas con la funcion adecuada
-						deviceTimeOn(eventos, e)
+						deviceTimeOn(eventos, e, elist)
+						# Reviso si el device esta activo con temperatura adecuada
+						temp_zone = float(e.device.zones[0]['zone'].variables['Temperature'])
+						if (temp_zone < MAX_TEMPERATURE):
+							elist.append({'position': e.position, 'executer': e.executer, \
+								'error': 'Heater on when no needed'})
 					elif (e.device.type_name == 'iCasa.Cooler' and \
 						e.changedProperty['property'] == 'cooler.powerLevel' and \
 						float(e.changedProperty['value']) >= 0):
 						# Determino si hay problema con la funcion adecuada
-						deviceTimeOn(eventos, e)
+						deviceTimeOn(eventos, e, elist)
+						# Reviso si el device esta activo con temperatura adecuada
+						temp_zone = float(e.device.zones[0]['zone'].variables['Temperature'])
+						if (temp_zone > MIN_TEMPERATURE):
+							elist.append({'position': e.position, 'executer': e.executer, \
+								'error': 'Cooler on when no needed'})
 					# 4. Altos niveles de CO/CO2
 					# 4.1 CO2
 					elif (e.device.type_name == 'iCasa.CO2GasSensor' and \
@@ -861,7 +946,71 @@ def main(argv):
 						e.changedProperty['value'] == 'true'):
 						elist.append({'position': e.position, 'executer': e.executer, \
 							'error': 'SIREN RINGING'})
-					# 7. 
+					# 7. Abandono de cocina
+				elif (isinstance(e, MoveEvent)):
+					e_zone = e.zone.name.lower()
+					# 8. Sedentarismo
+					if (e.event == 'move-person-zone' and e_zone == 'bedroom'):
+						# Obtenemos proximos moves a zones del mismo executer
+						next_moves = [x for x in eventos if isinstance(x, MoveEvent) and \
+									x.position > e.position and x.event == 'move-person-zone' and \
+									x.executer == e.executer]
+						# Sino hay mas
+						if (len(next_moves) == 0):
+							# Tiempo transcurrido al momento del move al bedroom
+							delays = [x.value for x in eventos if isinstance(x, TimeEvent) and \
+							x.position < e.position]
+							if (len(delays) > 0):
+								# Si hay algun delay
+								time_before_move = reduce((lambda x, y: x + y), delays)
+								current_time = time_sim + time_before_move
+								# Detectamos problemas con funcion adecuada
+								possibleSedentarism(eventos, e, current_time, elist)
+							else:
+								# Detectamos problemas con funcion adecuada y tiempo adecuado
+								possibleSedentarism(eventos, e, time_sim, elist)
+						# Si hay
+						else:
+							# Tiempo transcurrido al momento del move al bedroom
+							delays = [x.value for x in eventos if isinstance(x, TimeEvent) and \
+							x.position < e.position]
+							if (len(delays) > 0):
+								# Si hay algun delay
+								time_before_move = reduce((lambda x, y: x + y), delays)
+								current_time = time_sim + time_before_move
+								# En formato time
+								start_stuck_time = (datetime.datetime.min + current_time).time()								
+								# Se debe hallar la distancia en tiempo entre cada move
+								delays_bw_moves = [x.value for x in eventos if isinstance(x, TimeEvent) and \
+											x.position > e.position and x.position < next_moves[0].position]
+								time_between_moves = reduce((lambda x, y: x + y), delays_bw_moves)
+								# Tiempo entre moves sin current time
+								stuck_time = (datetime.datetime.min + time_between_moves).time()
+								# Tiempo entre moves considerando tiempo actual de la sim
+								current_time = current_time + time_between_moves
+								finish_stuck_time = (datetime.datetime.min + current_time).time()
+								if (DAYTIME_MIN < finish_stuck_time and DAYTIME_MAX > finish_stuck_time and \
+									NIGHTTIME_MIN > start_stuck_time and stuck_time > MAX_STUCK_BEDROOM_TIME):
+									elist.append({'position': e.position, 'executer': e.executer, \
+										'error': 'Sedentarism or sleeping too late'})
+							else:
+								# El move es el primer evento
+								current_time = time_sim
+								start_stuck_time = (datetime.datetime.min + current_time).time()								
+								# Se debe hallar la distancia en tiempo entre cada move
+								delays_bw_moves = [x.value for x in eventos if isinstance(x, TimeEvent) and \
+											x.position > e.position and x.position < next_moves[0].position]
+								time_between_moves = reduce((lambda x, y: x + y), delays_bw_moves)
+								# Tiempo entre moves sin current time
+								stuck_time = (datetime.datetime.min + time_between_moves).time()
+								# Tiempo entre moves considerando tiempo actual de la sim
+								current_time = current_time + time_between_moves
+								finish_stuck_time = (datetime.datetime.min + current_time).time()
+								if (DAYTIME_MIN < finish_stuck_time and DAYTIME_MAX > finish_stuck_time and \
+									NIGHTTIME_MIN > start_stuck_time and stuck_time > MAX_STUCK_BEDROOM_TIME):
+									elist.append({'position': e.position, 'executer': e.executer, \
+										'error': 'Sedentarism or sleeping too late'})
+
 		for zone in zones:
 			print("Zona: %s\n" % (zone.attrib['id']))
 
