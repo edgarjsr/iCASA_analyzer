@@ -65,6 +65,12 @@ MAX_TIME_LIGHT_ON = datetime.time(8, 0, 0)
 # Maximo tiempo encendido de una heater/cooler
 MAX_TIME_HEAT_COOL_ON = datetime.time(12, 0, 0)
 
+# Maxima concentracion de CO2 en ug/cub m, exposicion prolongada
+MAX_CO2_CONCENTRATION = 9000
+
+# Maxima concentracion de CO en ug/cub m, exposicion prolongada
+MAX_CO_CONCENTRATION = 40
+
 # Temperatura minima aceptable para activar heater (en kelvin)
 # 12 celsius
 MIN_TEMPERATURE = 285.15
@@ -85,7 +91,19 @@ NIGHTTIME_MIN = datetime.time(20, 0, 0)
 NIGHTTIME_MAX = datetime.time(5, 59, 59)
 
 # Tiempo maximo consecutivo a estar de dia en bedroom
-MAX_STUCK_BEDROOM_TIME = datetime.time(2, 0, 0)
+MAX_STUCK_TIME_BEDROOM = datetime.timedelta(hours=2)
+
+# Tiempo maximo consecutivo a estar dentro de la cocina
+MAX_STUCK_TIME_KITCHEN = datetime.timedelta(hours=2)
+
+# Tiempo maximo consecutivo a estar dentro del banio
+MAX_STUCK_TIME_BATHROOM = datetime.timedelta(hours=2)
+
+# Tiempo maximo consecutivo a estar en la sala
+MAX_STUCK_TIME_LIVINGROOM = datetime.timedelta(hours=5)
+
+# Tiempo maximo consecutivo a estar en un pasillo
+MAX_STUCK_TIME_HALLWAY = datetime.timedelta(hours=1)
 
 #################################
 # Funciones utiles              #
@@ -229,12 +247,12 @@ def deviceTimeOn(events, e, error_list):
 					'error': 'DimmerLight exceeded MAX ON time'})
 		elif (e.device.type_name == 'iCasa.Heater'):
 			# Si es heater
-			if (time_since_on > MAX_TIME_LIGHT_ON):
+			if (time_since_on > MAX_TIME_HEAT_COOL_ON):
 				error_list.append({'position': e.position, 'executer': e.executer, \
 					'error': 'Heater exceeded MAX ON time'})
 		elif (e.device.type_name == 'iCasa.Cooler'):
 			# Si es cooler
-			if (time_since_on > MAX_TIME_LIGHT_ON):
+			if (time_since_on > MAX_TIME_HEAT_COOL_ON):
 				error_list.append({'position': e.position, 'executer': e.executer, \
 					'error': 'Cooler exceeded MAX ON time'})
 		else:
@@ -280,28 +298,120 @@ def deviceTimeOn(events, e, error_list):
 # @args
 #    events: lista de eventos a recorrer para comparaciones
 #    e: evento move inicial
-#    current_time: tiempo actual de la simulacion diferente del base
+#    current_time: tiempo actual de la simulacion
 #    error_list: lista de errores al cual aniadir nuevos
 
 def possibleSedentarism(events, e, current_time, error_list):
+	start_stuck_time = (datetime.datetime.min + current_time).time()
 	# Hallamos tiempo en reposo
 	delays_post_move = [x.value for x in events if isinstance(x, TimeEvent) and \
 			x.position > e.position]
 	if (len(delays_post_move) > 0):
 		time_post_move = reduce((lambda x, y: x + y), delays_post_move)
-		# Tiempo sin moverme a otro lado sin aniadir current time
-		stuck_time = (datetime.datetime.min + time_post_move).time()
 		# Tiempo en habitacion sin moverme a otro lado contando tiempo actual
 		lazy_time = current_time + time_post_move
 		lazy_time = (datetime.datetime.min + lazy_time).time()
 		# Si es de dia y estuve muchas horas encerrado sin salir
 		if (DAYTIME_MIN < lazy_time and DAYTIME_MAX > lazy_time and \
-			stuck_time > MAX_STUCK_BEDROOM_TIME):
+			NIGHTTIME_MIN > start_stuck_time and time_post_move > MAX_STUCK_TIME_BEDROOM):
 			error_list.append({'position': e.position, 'executer': e.executer, \
 				'error': 'Not getting out of room for much time'})
 	else:
 		# En este caso, no hay suficiente info para sugerir sedentarismo
 		print('Not enough data to suggest sedentarism')
+
+# Funcion possibleSedentarismBM
+# Analiza patrones de tiempo para hallar problemas con no salir de la habitacion
+# cuando hay moves tiempo despues
+# @args
+#    events: lista de eventos a recorrer para comparaciones
+#    e: evento move inicial
+#    current_time: tiempo actual de la simulacion
+#    next_moves: lista de proximos movimientos del mismo executer
+#    error_list: lista de errores al cual aniadir nuevos
+
+def possibleSedentarismBM(events, e, current_time, next_moves, error_list):
+	# En formato time
+	start_stuck_time = (datetime.datetime.min + current_time).time()								
+	# Se debe hallar la distancia en tiempo entre cada move
+	delays_bw_moves = [x.value for x in events if isinstance(x, TimeEvent) and \
+				x.position > e.position and x.position < next_moves[0].position]
+	if (len(delays_bw_moves) > 0):
+		time_between_moves = reduce((lambda x, y: x + y), delays_bw_moves)
+		# Tiempo entre moves considerando tiempo actual de la sim
+		finish_stuck_time = current_time + time_between_moves
+		finish_stuck_time = (datetime.datetime.min + current_time).time()
+		if (DAYTIME_MIN < finish_stuck_time and DAYTIME_MAX > finish_stuck_time and \
+			NIGHTTIME_MIN > start_stuck_time and time_between_moves > MAX_STUCK_TIME_BEDROOM):
+			elist.append({'position': e.position, 'executer': e.executer, \
+				'error': 'Sedentarism or sleeping too late'})
+
+# Funcion possibleAccident
+# Analiza patrones de tiempo para hallar problemas con no salir de alguna habitacion
+# puntual a excepcion de bedroom
+# @args
+#    events: lista de eventos a recorrer para comparaciones
+#    e: evento move inicial
+#    e_zone: nombre zona pre-procesado
+#    error_list: lista de errores al cual aniadir nuevos
+
+def possibleAccident(events, e, e_zone, error_list):
+	# Determinamos tiempo post movimiento
+	delays_post_move = [x.value for x in events if isinstance(x, TimeEvent) and \
+				x.position > e.position]
+	if (len(delays_post_move) > 0):
+		time_post_move = reduce((lambda x, y: x + y), delays_post_move)
+		# Identificamos problemas
+		if (e_zone == 'bathroom' and time_post_move > MAX_STUCK_TIME_BATHROOM):
+			error_list.append({'position': e.position, 'executer': e.executer, \
+				'error': 'Possible accident in BATHROOM'})
+		elif (e_zone == 'livingroom' and time_post_move > MAX_STUCK_TIME_LIVINGROOM):
+			error_list.append({'position': e.position, 'executer': e.executer, \
+				'error': 'Possible accident in LIVING ROOM'})
+		elif (e_zone == 'kitchen' and time_post_move > MAX_STUCK_TIME_KITCHEN):
+			error_list.append({'position': e.position, 'executer': e.executer, \
+				'error': 'Possible accident in KITCHEN'})
+		elif (e_zone == 'hallway' and time_post_move > MAX_STUCK_TIME_HALLWAY):
+			error_list.append({'position': e.position, 'executer': e.executer, \
+				'error': 'Possible accident in HALLWAY'})
+		else:
+			print('No evident delay in any area')
+	else:
+		print('Not enough info to suggest accident')
+
+# Funcion possibleAccidentBM
+# Analiza patrones de tiempo para hallar problemas con no salir de alguna habitacion
+# puntual a excepcion de bedroom
+# @args
+#    events: lista de eventos a recorrer para comparaciones
+#    e: evento move inicial
+#    e_zone: nombre de zona pre-procesado
+#    next_moves: lista de proximos movimientos del mismo executer
+#    error_list: lista de errores al cual aniadir nuevos
+
+def possibleAccidentBM(events, e, e_zone, next_moves, error_list):
+	# Determinamos tiempo entre movimientos
+	delays_bw_moves = [x.value for x in events if isinstance(x, TimeEvent) and \
+				x.position > e.position and x.position < next_moves[0].position]
+	if (len(delays_bw_moves) > 0):
+		time_between_moves = reduce((lambda x, y: x + y), delays_bw_moves)
+		# Identificamos problemas
+		if (e_zone == 'bathroom' and time_between_moves > MAX_STUCK_TIME_BATHROOM):
+			error_list.append({'position': e.position, 'executer': e.executer, \
+				'error': 'Possible accident in BATHROOM'})
+		elif (e_zone == 'livingroom' and time_between_moves > MAX_STUCK_TIME_LIVINGROOM):
+			error_list.append({'position': e.position, 'executer': e.executer, \
+				'error': 'Possible accident in LIVING ROOM'})
+		elif (e_zone == 'kitchen' and time_between_moves > MAX_STUCK_TIME_KITCHEN):
+			error_list.append({'position': e.position, 'executer': e.executer, \
+				'error': 'Possible accident in KITCHEN'})
+		elif (e_zone == 'hallway' and time_between_moves > MAX_STUCK_TIME_HALLWAY):
+			error_list.append({'position': e.position, 'executer': e.executer, \
+				'error': 'Possible accident in HALLWAY'})
+		else:
+			print('No evident delay in any area')
+	else:
+		print('Not enough info to suggest accident')
 
 #################################
 # Clases                        #
@@ -314,6 +424,7 @@ def possibleSedentarism(events, e, current_time, error_list):
 #    position: posicion de aparicion en script
 #    name: nombre de la zona
 #    variables: dict de variables asociadas a zona
+
 class Zone:
 
 	# Inicializador
@@ -335,6 +446,7 @@ class Zone:
 #    type: tipo de dispositivo
 #    related_events: dict de eventos de ese dispositivo
 #    zones: lista de zonas donde se ubico el dispositivo
+
 class Device:
 
 	# Inicializador
@@ -355,6 +467,7 @@ class Device:
 #    name: nombre de la persona
 #    type: tipo de persona
 #    zones: lista de zonas donde se ubico la persona
+
 class Person:
 
 	# Inicializador
@@ -373,6 +486,7 @@ class Person:
 #    executer: sujeto involucrado con la accion
 #    position: posicion del evento
 #    event: evento ocurrido
+
 class Event:
 
 	# Inicializador
@@ -390,6 +504,7 @@ class Event:
 #
 # @attrs
 #    zone: zone a la cual se envia a la persona
+
 class MoveEvent(Event):
 
 	# Inicializador
@@ -408,6 +523,7 @@ class MoveEvent(Event):
 #
 # @attrs
 #    change: dict de variable/value modificado
+
 class VarChangingEvent(Event):
 
 	# Inicializador
@@ -423,6 +539,7 @@ class VarChangingEvent(Event):
 # @attrs
 #    unit: unidad de tiempo
 #    value: cantidad de unidades de tiempo
+
 class TimeEvent(Event):
 
 	# Inicializador
@@ -444,6 +561,7 @@ class TimeEvent(Event):
 #    position: posicion del evento
 #    device: dispositivo modificado
 #    changedProperty: dict de prop(s) modificada(s) con value
+
 class PropertyChangingEvent:
 
 	# Inicializador
@@ -465,6 +583,7 @@ class PropertyChangingEvent:
 #    first_act: accion inicial de una situacion
 #    events: lista de eventos ocurridos luego del inicio
 #    last_act: ultimo evento de una situacion
+
 class Situation:
 
 	# Inicializador
@@ -924,15 +1043,15 @@ def main(argv):
 								'error': 'Cooler on when no needed'})
 					# 4. Altos niveles de CO/CO2
 					# 4.1 CO2
-					elif (e.device.type_name == 'iCasa.CO2GasSensor' and \
+					elif (e.device.type_name == 'iCasa.COGasSensor' and \
 						e.changedProperty['property'] == 'carbonMonoxydeSensor.currentConcentration' and \
-						float(e.changedProperty['value']) >= 9000):
+						float(e.changedProperty['value']) >= MAX_CO_CONCENTRATION):
 						elist.append({'position': e.position, 'executer': e.executer, \
 							'error': 'HIGH CO CONCENTRATION'})
 					# 4.2 CO
-					elif (e.device.type_name == 'iCasa.COGasSensor' and \
+					elif (e.device.type_name == 'iCasa.CO2GasSensor' and \
 						e.changedProperty['property'] == 'carbonDioxydeSensor.currentConcentration' and \
-						float(e.changedProperty['value']) > 1000000):
+						float(e.changedProperty['value']) >= MAX_CO2_CONCENTRATION):
 						elist.append({'position': e.position, 'executer': e.executer, \
 							'error': 'HIGH CO2 CONCENTRATION'})
 					# 5. Puerta principal abierta mucho tiempo
@@ -948,8 +1067,8 @@ def main(argv):
 							'error': 'SIREN RINGING'})
 					# 7. Abandono de cocina
 				elif (isinstance(e, MoveEvent)):
-					e_zone = e.zone.name.lower()
 					# 8. Sedentarismo
+					e_zone = e.zone.name.lower().replace(' ','')
 					if (e.event == 'move-person-zone' and e_zone == 'bedroom'):
 						# Obtenemos proximos moves a zones del mismo executer
 						next_moves = [x for x in eventos if isinstance(x, MoveEvent) and \
@@ -978,38 +1097,49 @@ def main(argv):
 								# Si hay algun delay
 								time_before_move = reduce((lambda x, y: x + y), delays)
 								current_time = time_sim + time_before_move
-								# En formato time
-								start_stuck_time = (datetime.datetime.min + current_time).time()								
-								# Se debe hallar la distancia en tiempo entre cada move
-								delays_bw_moves = [x.value for x in eventos if isinstance(x, TimeEvent) and \
-											x.position > e.position and x.position < next_moves[0].position]
-								time_between_moves = reduce((lambda x, y: x + y), delays_bw_moves)
-								# Tiempo entre moves sin current time
-								stuck_time = (datetime.datetime.min + time_between_moves).time()
-								# Tiempo entre moves considerando tiempo actual de la sim
-								current_time = current_time + time_between_moves
-								finish_stuck_time = (datetime.datetime.min + current_time).time()
-								if (DAYTIME_MIN < finish_stuck_time and DAYTIME_MAX > finish_stuck_time and \
-									NIGHTTIME_MIN > start_stuck_time and stuck_time > MAX_STUCK_BEDROOM_TIME):
-									elist.append({'position': e.position, 'executer': e.executer, \
-										'error': 'Sedentarism or sleeping too late'})
+								# Uso funcion adecuada
+								possibleSedentarismBM(eventos, e, current_time, next_moves, elist)
+							else:
+								# El move es el primer evento, uso funcion adecuada
+								possibleSedentarismBM(eventos, e, time_sim, next_moves, elist)
+					# 9. Accidentes
+					# Los 'accidentes' en bedroom quedan atrapados por el analisis de sedentarismo
+					if (e.event == 'move-person-zone' and e_zone != 'bedroom'):
+						# Obtenemos siguiente move a cualquier zona del mismo executer
+						next_moves = [x for x in eventos if isinstance(x, MoveEvent) and \
+									x.position > e.position and x.event == 'move-person-zone' and \
+									x.executer == e.executer]
+						# Si hay movimientos futuros
+						if (len(next_moves) > 0):
+							# Se debe ubicar tiempo inicial y tiempo entre movimientos
+							delays = [x.value for x in eventos if isinstance(x, TimeEvent) and \
+							x.position < e.position]
+							if (len(delays) > 0):
+								# Determinamos tiempo inicial
+								time_before_move = reduce((lambda x, y: x + y), delays)
+								current_time = time_sim + time_before_move
+								# Llamo la funcion adecuada
+								possibleAccidentBM(eventos, e, e_zone, next_moves, elist)
 							else:
 								# El move es el primer evento
-								current_time = time_sim
-								start_stuck_time = (datetime.datetime.min + current_time).time()								
-								# Se debe hallar la distancia en tiempo entre cada move
-								delays_bw_moves = [x.value for x in eventos if isinstance(x, TimeEvent) and \
-											x.position > e.position and x.position < next_moves[0].position]
-								time_between_moves = reduce((lambda x, y: x + y), delays_bw_moves)
-								# Tiempo entre moves sin current time
-								stuck_time = (datetime.datetime.min + time_between_moves).time()
-								# Tiempo entre moves considerando tiempo actual de la sim
-								current_time = current_time + time_between_moves
-								finish_stuck_time = (datetime.datetime.min + current_time).time()
-								if (DAYTIME_MIN < finish_stuck_time and DAYTIME_MAX > finish_stuck_time and \
-									NIGHTTIME_MIN > start_stuck_time and stuck_time > MAX_STUCK_BEDROOM_TIME):
-									elist.append({'position': e.position, 'executer': e.executer, \
-										'error': 'Sedentarism or sleeping too late'})
+								possibleAccidentBM(eventos, e, e_zone, next_moves, elist)
+						# En otro caso
+						else:
+							# Se debe ubicar tiempo inicial y tiempo entre movimientos
+							delays = [x.value for x in eventos if isinstance(x, TimeEvent) and \
+							x.position < e.position]
+							if (len(delays) > 0):
+								# Determinamos tiempo inicial
+								time_before_move = reduce((lambda x, y: x + y), delays)
+								current_time = time_sim + time_before_move
+								# Llamo la funcion adecuada
+								possibleAccident(eventos, e, e_zone, elist)
+							else:
+								# El move es el primer evento
+								possibleAccident(eventos, e, e_zone, elist)
+					# 10. Idas al banio
+		for elem in elist:
+			print(elem['error'])
 
 		for zone in zones:
 			print("Zona: %s\n" % (zone.attrib['id']))
