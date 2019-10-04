@@ -105,6 +105,12 @@ MAX_STUCK_TIME_LIVINGROOM = datetime.timedelta(hours=5)
 # Tiempo maximo consecutivo a estar en un pasillo
 MAX_STUCK_TIME_HALLWAY = datetime.timedelta(hours=1)
 
+# Tiempo ideal para miccion
+IDEAL_TIME_BW_MICTURITION = datetime.timedelta(hours=4)
+
+# Tiempo prudencial para mantener la puerta principal abierta
+MAX_MAIN_DOOR_OPEN_TIME = datetime.timedelta(minutes=30)
+
 #################################
 # Funciones utiles              #
 #################################
@@ -318,7 +324,8 @@ def possibleSedentarism(events, e, current_time, error_list):
 				'error': 'Not getting out of room for much time'})
 	else:
 		# En este caso, no hay suficiente info para sugerir sedentarismo
-		print('Not enough data to suggest sedentarism')
+		pass
+		#print('Not enough data to suggest sedentarism')
 
 # Funcion possibleSedentarismBM
 # Analiza patrones de tiempo para hallar problemas con no salir de la habitacion
@@ -375,9 +382,11 @@ def possibleAccident(events, e, e_zone, error_list):
 			error_list.append({'position': e.position, 'executer': e.executer, \
 				'error': 'Possible accident in HALLWAY'})
 		else:
-			print('No evident delay in any area')
+			pass
+			#print('No evident delay in any area')
 	else:
-		print('Not enough info to suggest accident')
+		pass
+		#print('Not enough info to suggest accident')
 
 # Funcion possibleAccidentBM
 # Analiza patrones de tiempo para hallar problemas con no salir de alguna habitacion
@@ -409,9 +418,11 @@ def possibleAccidentBM(events, e, e_zone, next_moves, error_list):
 			error_list.append({'position': e.position, 'executer': e.executer, \
 				'error': 'Possible accident in HALLWAY'})
 		else:
-			print('No evident delay in any area')
+			pass
+			#print('No evident delay in any area')
 	else:
-		print('Not enough info to suggest accident')
+		pass
+		#print('Not enough info to suggest accident')
 
 #################################
 # Clases                        #
@@ -610,19 +621,20 @@ class Situation:
 
 # Funcion principal
 def main(argv):
-	# Si pasaron menos de dos argumentos
-	if (len(argv) < 2):
-		print('Usage: analyzer.py input_file.bhv')
+	# Si pasaron menos de tres argumentos
+	if (len(argv) < 3):
+		print('Usage: analyzer.py input_file.bhv main_door_room')
 		sys.exit(1)
-	# Si pasaron mas de dos argumentos
-	elif (len(argv) > 2):
-		print('Usage: analyzer.py input_file.bhv')
+	# Si pasaron mas de tres argumentos
+	elif (len(argv) > 3):
+		print('Usage: analyzer.py input_file.bhv main_door_room')
 		sys.exit(2)
-	# Pasaron los dos argumentos necesarios
+	# Pasaron los tres argumentos necesarios
 	else:
 		# Genero ElementTree a partir del archivo
 		simulacion = ET.parse(argv[1])
 		behavior = simulacion.getroot()
+		main_door_room = argv[2]
 
 		try:
 			# Si hay fecha/hora
@@ -648,7 +660,8 @@ def main(argv):
 		people = []
 		delay = []
 
-		# Lista de dics para zones, devices y people
+		# Lista de dics para zones, devices, people, eventos de tiempo,
+		# situaciones y errores
 		zlist = []
 		dlist = []
 		plist = []
@@ -656,12 +669,22 @@ def main(argv):
 		slist = []
 		elist = []
 
-		# Listas de instancias de clases para cada elemento
+		# Listas de instancias de clases para personas, devices, zonas, eventos
+		# y situaciones
 		pclass = []
 		dclass = []
 		zclass = []
 		eclass = []
 		sclass = []
+
+		# Lista de tiempo total para una simulacion
+		total_time = []
+
+		# Veces que se fue al banio en toda la sim
+		bathroom_times = []
+
+		# Veces que sali
+		times_out = []
 
 		# Lleno listas de todas las zones, devices, people y delays
 		for child in behavior:
@@ -1004,8 +1027,6 @@ def main(argv):
 						e.changedProperty['value'] == 'true'):
 						elist.append({'position': e.position, 'executer': e.executer, \
 							'error': 'FloodSensor detected a problem'})
-						# Testing message
-						print('FloodSensor detected a problem')
 					# 2. Luces siempre encendidas
 					# 2.1 Binary Lights
 					elif (e.device.type_name == 'iCasa.BinaryLight' and \
@@ -1056,16 +1077,43 @@ def main(argv):
 							'error': 'HIGH CO2 CONCENTRATION'})
 					# 5. Puerta principal abierta mucho tiempo
 					elif (e.device.type_name == 'iCasa.DoorWindowSensor' and \
-						e.changedProperty['value'] == 'true'):
-						elist.append({'position': e.position, 'executer': e.executer, \
-							'error': 'MAIN DOOR LET OPENED'})
-						# Revisar cuanto tiempo estuvo abierta la puerta
+						e.changedProperty['value'] == 'true' and e.device.zones[0]['zone'].name == main_door_room):
+						# Contamos la salida
+						times_out.append(1)
+						# Revisamos si se cerro
+						closed_door = [x for x in eventos if isinstance(x, PropertyChangingEvent) and\
+										x.device.type_name == 'iCasa.DoorWindowSensor' and \
+										x.changedProperty['value'] == 'false' and \
+										e.device.name == x.device.name and e.position < x.position]
+						# Si la cerraron
+						if (len(closed_door) > 0):
+							# Revisamos tiempo entre open/close
+							time_bw_closing = [x.value for x in eventos if isinstance(x, TimeEvent) and \
+												x.position > e.position and x.position < closed_door[0].position]
+							if (len(time_bw_closing) > 0):
+								time_bw_closing = reduce((lambda x, y: x + y), time_bw_closing)
+								if (time_bw_closing > MAX_MAIN_DOOR_OPEN_TIME):
+									elist.append({'position': e.position, 'executer': e.executer, \
+										'error': 'Main door LET OPENED for much time'})
+						# Si no fue cerrada
+						else:
+							# Obtenemos tiempo transcurrido luego de apertura
+							time_opened = [x.value for x in eventos if isinstance(x, TimeEvent) and \
+											x.position > e.position]
+							if (len(time_opened) > 0):
+								time_opened = reduce((lambda x, y: x + y), time_opened)
+								if (time_opened > MAX_MAIN_DOOR_OPEN_TIME):
+									elist.append({'position': e.position, 'executer': e.executer, \
+										'error': 'Main door LET OPENED for much time'})
+							else:
+								pass
+								#print('Not enough data to analyze main door opening time patterns')
 					# 6. Sirena encendida
 					elif (e.device.type_name == 'iCasa.Siren' and \
 						e.changedProperty['value'] == 'true'):
 						elist.append({'position': e.position, 'executer': e.executer, \
 							'error': 'SIREN RINGING'})
-					# 7. Abandono de cocina
+				# Problemas relacionados a movimientos
 				elif (isinstance(e, MoveEvent)):
 					# 8. Sedentarismo
 					e_zone = e.zone.name.lower().replace(' ','')
@@ -1137,9 +1185,61 @@ def main(argv):
 							else:
 								# El move es el primer evento
 								possibleAccident(eventos, e, e_zone, elist)
-					# 10. Idas al banio
+			# 10. Idas al banio
+			# Hallamos la totalidad del tiempo por cada situacion
+			situation_time = [x.value for x in eventos if isinstance(x, TimeEvent)]
+			situation_time = reduce((lambda x, y: x + y), situation_time)
+			total_time.append(situation_time)
+			# Si el tiempo de una situacion es mayor a 4 horas, se debio ir, idealmente
+			# al menos una vez a banio
+			if (situation_time > IDEAL_TIME_BW_MICTURITION):
+				# Revisamos si fuimos al menos una vez al banio en ese periodo
+				went_to_bathroom = [x for x in eventos if isinstance(x, MoveEvent) and \
+									x.event == 'move-person-zone' and x.zone.name == 'bathroom']
+				# Suponiendo una unica persona, si hay eventos, los contamos
+				times_bathroom = len(went_to_bathroom)
+				bathroom_times.append(times_bathroom)
+				if (times_bathroom > 0):
+					pass
+					print('No apparent micturating problem')
+				else:
+					# Hay problema
+					executer = [x for x in pclass][0]
+					elist.append({'position': None, 'executer': executer.name, \
+						'error': 'Irregular micturating time'})
+
+		# Vemos si hay problema con la totalidad de la sim
+		total_time = reduce((lambda x, y: x + y), total_time)
+		# Si el tiempo de una situacion es mayor a 4 horas, se debio ir, idealmente
+		# al menos una vez a banio
+		if (total_time > IDEAL_TIME_BW_MICTURITION):
+			# Revisamos si fuimos al menos una vez al banio en toda la sim
+			total_bathroom_times = reduce((lambda x, y: x + y), bathroom_times)
+			# Suponiendo una unica persona, si hay eventos, los contamos
+			if (total_bathroom_times > 0):
+				pass
+				#print('No apparent micturating problem')
+			else:
+				# Hay problema
+				executer = [x for x in pclass][0]
+				elist.append({'position': None, 'executer': executer.name, \
+					'error': 'Irregular micturating time'})
+
+		# 11. Salir al menos una vez de casa
+		# Se revisan las veces que salimos
+		if (times_out):
+			pass
+			#times_out = reduce((lambda x, y: x + y), times_out)
+			#print('Got out of house %d time(s)' % (times_out))
+		else:
+			if (total_time > datetime.timedelta(hours=24)):
+				# Hay un problema
+				executer = [x for x in pclass][0]
+				elist.append({'position': None, 'executer': executer.name, 'error': 'Never going out'})
+
 		for elem in elist:
-			print(elem['error'])
+			if (elem['error'] == 'FloodSensor detected a problem'):
+				print('asi mapeo')
 
 		for zone in zones:
 			print("Zona: %s\n" % (zone.attrib['id']))
