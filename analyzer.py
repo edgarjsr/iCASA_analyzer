@@ -686,6 +686,9 @@ def main(argv):
 		# Veces que sali
 		times_out = []
 
+		# Veces que abri el closet
+		times_wd_opened = []
+
 		# Lleno listas de todas las zones, devices, people y delays
 		for child in behavior:
 			if (child.tag == 'create-zone'):
@@ -1224,7 +1227,6 @@ def main(argv):
 				executer = [x for x in pclass][0]
 				elist.append({'position': None, 'executer': executer.name, \
 					'error': 'Irregular micturating time'})
-
 		# 11. Salir al menos una vez de casa
 		# Se revisan las veces que salimos
 		if (times_out):
@@ -1236,6 +1238,35 @@ def main(argv):
 				# Hay un problema
 				executer = [x for x in pclass][0]
 				elist.append({'position': None, 'executer': executer.name, 'error': 'Never going out'})
+
+		# 12. Dressing
+		# No abrir el closet en un periodo largo de tiempo (24h+) sugiere problema
+		if (total_time > datetime.timedelta(hours=24)):
+			# Obtengo numero de dias a partir del todo
+			number_days = total_time.days
+			for s in sclass:
+				eventos = s.get_mid_events()
+				for e in eventos:
+					if (isinstance(e, PropertyChangingEvent)):
+						if (e.device.type_name == 'iCasa.DoorWindowSensor' and \
+							e.changedProperty['value'] == 'true' and e.device.zones[0]['zone'].name == 'bedroom'):
+							prev_event = [x for x in eventos if x.position == e.position - 1][0]
+							if (isinstance(prev_event, MoveEvent)):
+								# Abriendo puerta de cuarto y no closet, posible problema
+								times_wd_opened.append(0)
+							else:
+								# Abri el closet
+								executer = e.executer
+								times_wd_opened.append(1)
+
+			if (times_wd_opened):
+				times_wd_opened = reduce((lambda x, y: x + y), times_wd_opened)
+				if (times_wd_opened >= number_days):
+					# No hay problema
+					pass
+				else:
+					# No se ha cambiado
+					elist.append({'position': None, 'executer': executer, 'error': 'Not changing clothes'})
 
 		for elem in elist:
 			if (elem['error'] == 'FloodSensor detected a problem'):
