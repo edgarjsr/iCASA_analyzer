@@ -23,11 +23,11 @@ from functools import reduce
 
 # Aniadir en este bloque
 
-#################################
-# Definicion de variables AGGIR #
-#################################
+##################################
+# Definicion de constantes AGGIR #
+##################################
 
-# NOTA: La variables tienen tres valores posibles de
+# NOTA: Las constantes tienen tres valores posibles de
 # acuerdo al nivel de dependencia del sujeto, asi:
 
 # A: dependencia completa
@@ -124,6 +124,8 @@ MAX_MAIN_DOOR_OPEN_TIME = datetime.timedelta(minutes=30)
 # @args
 #    key: clave a buscar
 #    list: lista
+# @returns
+#    Boolean
 
 def varsInList(key, list):
 	results = []
@@ -131,7 +133,22 @@ def varsInList(key, list):
 		results.append(key in e)
 	return (True in results)
 
-# Funcion numerador
+# Funcion errorInList
+# Retorna true si el error 'error' esta presente en algun elemento
+# de la lista 'list', false en otro caso
+# @args
+#    error: error a buscar
+#    list: lista
+# @returns
+#    Boolean
+
+def errorInList(value, list):
+	results = []
+	for e in list:
+		results.append(e['error'])
+	return (value in results)
+
+# Procedimiento numerador
 # Numera las acciones en el xml
 # @args
 #    root: raiz del xml
@@ -142,7 +159,7 @@ def numerador(root):
 		child.set('orden', i)
 		i += 1
 
-# Funcion update_dict_zones
+# Procedimiento update_dict_zones
 # Actualiza zonas de dicts existentes a sus instancias
 # correspondientes
 # @args
@@ -156,7 +173,7 @@ def update_dict_zones(d_list, i_list):
 				if (e['zone'] == z.name):
 					e['zone'] = z
 
-# Funcion event_generator
+# Procedimiento event_generator
 # Genera eventos a partir de listas y comparaciones
 # @args
 #	d_list: lista de dicts con eventos
@@ -195,15 +212,44 @@ def event_generator(d_list, e_list):
 			e_list.append(TimeEvent(None, d['orden'], d['unit'], \
 				time_unit, d['expr']))
 
+# Procedimiento setPropertyEventsGenerator
+# Genera eventos property changing a partir de set-device-property
+# @args
+#    sim: resultado de lectura de xml 
+#    sim_child: linea de la simulacion con set-device-property
+#    zone: instancia de clase zone donde se ubica el device
+#    device: dispositivo modificado por set-device-property
+#    changes: dict property/value del device
+#    elist: lista de eventos
+
+def changePropertyEventGenerator(sim, sim_child, zone, device, changes, elist):
+	last_move = [x for x in sim if x.attrib['orden'] < sim_child.attrib['orden'] \
+				and x.tag == 'move-person-zone' and \
+				x.attrib['zoneId'].lower().replace(' ','') == zone.name]
+	if (last_move):
+		executer = last_move[len(last_move) - 1].attrib['personId']
+		executer = [p for p in pclass if p.name == executer]
+		# Creo instancias
+		elist.append(PropertyChangingEvent(executer, sim_child.attrib['orden'], \
+			device, changes))
+	else:
+		# No puedo inferir por el ultimo movimiento a la zona del device
+		# porque no hay
+		elist.append(PropertyChangingEvent(None, sim_child.attrib['orden'], \
+			device, changes))
+
+
 # Funcion positionOrdering
 # Funciona de key para el sort()
 # @args
 #    event: evento de la lista de eventos
+# @returns
+#    Int, posicion en la simulacion de un evento
 
 def positionOrdering(event):
 	return event.position
 
-# Funcion deviceTimeOn
+# Procedimiento deviceTimeOn
 # Aniade a lista de errores aquellos eventos que excedieron tiempo max de device on
 # @args
 #    events: lista de eventos a revisar en busca de turn off
@@ -301,7 +347,7 @@ def deviceTimeOn(events, e, error_list):
 				error_list.append({'position': e.position, 'executer': e.executer, \
 					'error': 'BinaryLight exceeded MAX ON time'})
 
-# Funcion possibleSedentarism
+# Procedimiento possibleSedentarism
 # Analiza patrones de tiempo para hallar problemas con no salir de la habitacion
 # pues no hay moves futuros
 # @args
@@ -326,7 +372,7 @@ def possibleSedentarism(events, e, current_time, error_list):
 			error_list.append({'position': e.position, 'executer': e.executer, \
 				'error': 'Not getting out of room for much time'})
 
-# Funcion possibleSedentarismBM
+# Procedimiento possibleSedentarismBM
 # Analiza patrones de tiempo para hallar problemas con no salir de la habitacion
 # cuando hay moves tiempo despues
 # @args
@@ -352,7 +398,7 @@ def possibleSedentarismBM(events, e, current_time, next_moves, error_list):
 			elist.append({'position': e.position, 'executer': e.executer, \
 				'error': 'Sedentarism or sleeping too late'})
 
-# Funcion possibleAccident
+# Procedimiento possibleAccident
 # Analiza patrones de tiempo para hallar problemas con no salir de alguna habitacion
 # puntual a excepcion de bedroom
 # @args
@@ -381,7 +427,7 @@ def possibleAccident(events, e, e_zone, error_list):
 			error_list.append({'position': e.position, 'executer': e.executer, \
 				'error': 'Possible accident in HALLWAY'})
 
-# Funcion possibleAccidentBM
+# Procedimiento possibleAccidentBM
 # Analiza patrones de tiempo para hallar problemas con no salir de alguna habitacion
 # puntual a excepcion de bedroom
 # @args
@@ -892,7 +938,7 @@ def main(argv):
 												'zone': zone}
 								# Ultima persona que se movio a la zona
 								executer = last_move[len(last_move) - 1].attrib['personId']
-								executer = [p for p in pclass if p.name == executer]
+								executer = [p for p in pclass if p.name == executer][0]
 								eclass.append(VarChangingEvent(executer, child.attrib['orden'], child.tag, \
 									dictionary))
 
@@ -928,24 +974,15 @@ def main(argv):
 								num_zones_dev = len(device.zones)
 								if (num_zones_dev == 1):
 									zone = device.zones[0]['zone']
-									last_move = [x for x in behavior if x.attrib['orden'] < child.attrib['orden'] and \
-												x.tag == 'move-person-zone' and \
-												x.attrib['zoneId'].lower().replace(' ','') == zone.name]
-									if (last_move):
-										executer = last_move[len(last_move) - 1].attrib['personId']
-										executer = [p for p in pclass if p.name == executer]
-										# Creo instancias
-										eclass.append(PropertyChangingEvent(executer, child.attrib['orden'], \
-											device, changes))
-									else:
-										# No puedo inferir por el ultimo movimiento a la zona del device
-										# porque no hay
-										eclass.append(PropertyChangingEvent(None, child.attrib['orden'], \
-											device, changes))
+									# Llamo a la funcion adecuada
+									changePropertyEventGenerator(behavior, child, zone, device, changes, eclass)
 								else:
-									# No puedo inferir por variedad de zonas del device
-									eclass.append(PropertyChangingEvent(None, child.attrib['orden'], \
-										device, changes))
+									# Busco la zona en device cuyo orden sea el mas cercano al orden
+									# del set-device-property actual
+									nearest_zone = [x['zone'] for x in device.zones if \
+																x['orden'] < child.attrib['orden']][-1]
+									# Llamo a la funcion adecuada
+									changePropertyEventGenerator(behavior, child, nearest_zone, device, changes, eclass)
 
 		# CASO 4: fault device
 
@@ -1299,9 +1336,12 @@ def main(argv):
 				executer = [x for x in pclass][0]
 				elist.append({'position': None, 'executer': executer.name, 'error': 'Never going out'})
 
-		for elem in elist:
-			if (elem['error'] == 'FloodSensor detected a problem'):
-				print('asi mapeo')
+		# MAPEO DE ERRORES EN SIMULACION CON LAS CONSTANTES AGGIR
+
+		if (errorInList('FloodSensor detected a problem', elist)):
+			print('con funcion')
+		elif (errorInList('Never going out', elist)):
+			print('esto no sale')
 
 		for zone in zones:
 			print("Zona: %s\n" % (zone.attrib['id']))
