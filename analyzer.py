@@ -108,6 +108,9 @@ MAX_STUCK_TIME_HALLWAY = datetime.timedelta(hours=1)
 # Tiempo ideal para miccion
 IDEAL_TIME_BW_MICTURITION = datetime.timedelta(hours=4)
 
+# Veces de ida al banio promedio en un dia
+AVERAGE_MICTURITION_FREQ = 6
+
 # Tiempo prudencial para mantener la puerta principal abierta
 MAX_MAIN_DOOR_OPEN_TIME = datetime.timedelta(minutes=30)
 
@@ -239,7 +242,7 @@ def deviceTimeOn(events, e, error_list):
 				e.device.name == x.device.name]
 
 	# Si fue apagado
-	if (len(device_off) > 0):
+	if (device_off):
 		device_off_position == device_off[0].position
 		delays = [x.value for x in events if isinstance(x, TimeEvent) and \
 		x.position > e.position and x.position < device_off_position]
@@ -271,7 +274,7 @@ def deviceTimeOn(events, e, error_list):
 	else:
 		delays = [x.value for x in events if isinstance(x, TimeEvent) and \
 		x.position > e.position]
-		if (len(delays) > 0):
+		if (delays):
 			# Tiempo que se mantuvo encendido
 			time_since_on = (datetime.datetime.min + reduce((lambda x, y: x + y), delays)).time()
 		else:
@@ -312,7 +315,7 @@ def possibleSedentarism(events, e, current_time, error_list):
 	# Hallamos tiempo en reposo
 	delays_post_move = [x.value for x in events if isinstance(x, TimeEvent) and \
 			x.position > e.position]
-	if (len(delays_post_move) > 0):
+	if (delays_post_move):
 		time_post_move = reduce((lambda x, y: x + y), delays_post_move)
 		# Tiempo en habitacion sin moverme a otro lado contando tiempo actual
 		lazy_time = current_time + time_post_move
@@ -322,10 +325,6 @@ def possibleSedentarism(events, e, current_time, error_list):
 			NIGHTTIME_MIN > start_stuck_time and time_post_move > MAX_STUCK_TIME_BEDROOM):
 			error_list.append({'position': e.position, 'executer': e.executer, \
 				'error': 'Not getting out of room for much time'})
-	else:
-		# En este caso, no hay suficiente info para sugerir sedentarismo
-		pass
-		#print('Not enough data to suggest sedentarism')
 
 # Funcion possibleSedentarismBM
 # Analiza patrones de tiempo para hallar problemas con no salir de la habitacion
@@ -343,7 +342,7 @@ def possibleSedentarismBM(events, e, current_time, next_moves, error_list):
 	# Se debe hallar la distancia en tiempo entre cada move
 	delays_bw_moves = [x.value for x in events if isinstance(x, TimeEvent) and \
 				x.position > e.position and x.position < next_moves[0].position]
-	if (len(delays_bw_moves) > 0):
+	if (delays_bw_moves):
 		time_between_moves = reduce((lambda x, y: x + y), delays_bw_moves)
 		# Tiempo entre moves considerando tiempo actual de la sim
 		finish_stuck_time = current_time + time_between_moves
@@ -366,7 +365,7 @@ def possibleAccident(events, e, e_zone, error_list):
 	# Determinamos tiempo post movimiento
 	delays_post_move = [x.value for x in events if isinstance(x, TimeEvent) and \
 				x.position > e.position]
-	if (len(delays_post_move) > 0):
+	if (delays_post_move):
 		time_post_move = reduce((lambda x, y: x + y), delays_post_move)
 		# Identificamos problemas
 		if (e_zone == 'bathroom' and time_post_move > MAX_STUCK_TIME_BATHROOM):
@@ -381,12 +380,6 @@ def possibleAccident(events, e, e_zone, error_list):
 		elif (e_zone == 'hallway' and time_post_move > MAX_STUCK_TIME_HALLWAY):
 			error_list.append({'position': e.position, 'executer': e.executer, \
 				'error': 'Possible accident in HALLWAY'})
-		else:
-			pass
-			#print('No evident delay in any area')
-	else:
-		pass
-		#print('Not enough info to suggest accident')
 
 # Funcion possibleAccidentBM
 # Analiza patrones de tiempo para hallar problemas con no salir de alguna habitacion
@@ -402,7 +395,7 @@ def possibleAccidentBM(events, e, e_zone, next_moves, error_list):
 	# Determinamos tiempo entre movimientos
 	delays_bw_moves = [x.value for x in events if isinstance(x, TimeEvent) and \
 				x.position > e.position and x.position < next_moves[0].position]
-	if (len(delays_bw_moves) > 0):
+	if (delays_bw_moves):
 		time_between_moves = reduce((lambda x, y: x + y), delays_bw_moves)
 		# Identificamos problemas
 		if (e_zone == 'bathroom' and time_between_moves > MAX_STUCK_TIME_BATHROOM):
@@ -417,12 +410,6 @@ def possibleAccidentBM(events, e, e_zone, next_moves, error_list):
 		elif (e_zone == 'hallway' and time_between_moves > MAX_STUCK_TIME_HALLWAY):
 			error_list.append({'position': e.position, 'executer': e.executer, \
 				'error': 'Possible accident in HALLWAY'})
-		else:
-			pass
-			#print('No evident delay in any area')
-	else:
-		pass
-		#print('Not enough info to suggest accident')
 
 #################################
 # Clases                        #
@@ -699,17 +686,16 @@ def main(argv):
 				people.append(child)
 			elif (child.tag == 'delay'):
 				delay.append(child)
-			else:
-				pass
 
 		# Obtengo variables asociadas a cada zona
-		if (len(zones) > 0):
+		if (zones):
 			for zone in zones:
 				zdic = {}
-				zdic['zone'] = zone.attrib['id']
+				zdic['zone'] = zone.attrib['id'].lower().replace(' ','')
 				zdic['orden'] = zone.attrib['orden']
 				for child in behavior:
-					if (child.tag == 'add-zone-variable' and child.attrib['zoneId'] == zone.attrib['id']):
+					if (child.tag == 'add-zone-variable' and \
+						child.attrib['zoneId'].lower().replace(' ','') == zdic['zone']):
 						# Si el dic ya fue creado, actualizo
 						if ('vars' in zdic):
 							tmp = zdic['vars']
@@ -725,17 +711,15 @@ def main(argv):
 			if (varsInList('vars', zlist)):
 				for z in zlist:
 					for child in behavior:
-						if (child.tag == 'modify-zone-variable' and child.attrib['zoneId'] == z['zone']):
+						if (child.tag == 'modify-zone-variable' and \
+							child.attrib['zoneId'].lower().replace(' ','') == z['zone']):
 							tmp = z['vars']
 							tmp[child.attrib['variable']] = child.attrib['value']
 							z['vars'] = tmp
-			# Si no hay, skip
-			else:
-				pass
 
 		# TENGO TODO DE LAS ZONAS
 
-		if (len(devices) > 0):
+		if (devices):
 			# Obtengo devices y sus zonas
 			for device in devices:
 				ddic = {}
@@ -747,11 +731,13 @@ def main(argv):
 						# Si existe el key zone, aniado el dic a la lista
 						if ('zone' in ddic):
 							tmp = ddic['zone']
-							tmp.append({'orden': child.attrib['orden'], 'zone': child.attrib['zoneId']})
+							tmp.append({'orden': child.attrib['orden'], \
+								'zone': child.attrib['zoneId'].lower().replace(' ','')})
 							ddic['zone'] = tmp
 						# Creo la nueva lista
 						else:
-							ddic['zone'] = [{'orden': child.attrib['orden'], 'zone': child.attrib['zoneId']}]
+							ddic['zone'] = [{'orden': child.attrib['orden'], \
+							'zone': child.attrib['zoneId'].lower().replace(' ','')}]
 				dlist.append(ddic)
 
 		# Tengo devices con id, type y zona donde esta
@@ -785,7 +771,7 @@ def main(argv):
 
 		# TENGO DEVICES CON TODOS LOS EVENTOS OCURRIDOS CON ELLOS, ADEMAS DE ZONAS, ORDEN, TIPOS E ID
 
-		if (len(people) > 0):
+		if (people):
 			# Obtengo personas
 			for person in people:
 				pdic = {}
@@ -797,17 +783,19 @@ def main(argv):
 						# Si existe el key zone, aniadimos la zona nueva al dic
 						if ('zone' in pdic):
 							tmp = pdic['zone']
-							tmp.append({'orden': child.attrib['orden'], 'zone': child.attrib['zoneId']})
+							tmp.append({'orden': child.attrib['orden'], \
+								'zone': child.attrib['zoneId'].lower().replace(' ','')})
 							pdic['zone'] = tmp
 						# Creo dic de zonas en otro caso
 						else:
-							pdic['zone'] = [{'orden': child.attrib['orden'], 'zone': child.attrib['zoneId']}]
+							pdic['zone'] = [{'orden': child.attrib['orden'], \
+							'zone': child.attrib['zoneId'].lower().replace(' ','')}]
 				plist.append(pdic)
 
 		# TENGO A LAS PERSONAS Y SUS ZONAS CORRESPONDIENTES
 
 		# Obtengo estructuras de tiempo
-		if (len(delay) > 0):
+		if (delay):
 			for d in delay:
 				tdict = {}
 				tdict['expr'] = d.tag
@@ -818,7 +806,7 @@ def main(argv):
 
 		# TENGO TODOS LOS DELAY DESGLOSADOS, ES UN EVENT
 
-		if (len(zlist) > 0):
+		if (zlist):
 			# Generando instancias de clases para zonas
 			for elem in zlist:
 				zclass.append(Zone(elem['orden'], elem['zone'], elem['vars']))
@@ -829,7 +817,7 @@ def main(argv):
 			# Actualizando zonas en dict de people
 			update_dict_zones(plist, zclass)
 
-		if (len(dlist) > 0):
+		if (dlist):
 			# Generando instancias de clases para dispositivos
 			for elem in dlist:
 				try:
@@ -837,7 +825,7 @@ def main(argv):
 				except:
 					dclass.append(Device(elem['orden'], elem['device'], elem['type'], [], elem['zone']))
 
-		if (len(plist) > 0):
+		if (plist):
 			# Generando instancias de clases para personas
 			for elem in plist:
 				pclass.append(Person(elem['name'], elem['type'], elem['zone']))
@@ -853,7 +841,7 @@ def main(argv):
 			for child in behavior:
 				if (child.tag == 'move-device-zone'):
 					tmp = [c for c in behavior if c.attrib['orden'] < child.attrib['orden']]
-					if (len(tmp) > 0):
+					if (tmp):
 						# Caso setup
 						if (tmp[len(tmp) - 1].tag == 'create-device'):
 							pass
@@ -861,8 +849,6 @@ def main(argv):
 						elif (tmp[len(tmp) - 1].tag == 'move-person-zone'):
 							executer = [p for p in pclass if p.name == tmp[len(tmp) - 1].attrib['personId']][0]
 							eclass.append(Event(executer, child.attrib['orden'], child.tag))
-						else:
-							pass
 
 		# CASO 2: modify-zone-variable
 
@@ -872,24 +858,43 @@ def main(argv):
 			for child in behavior:
 				if (child.tag == 'modify-zone-variable'):
 					tmp = [c for c in behavior if c.attrib['orden'] < child.attrib['orden']]
-					if (len(tmp) > 0):
+					if (tmp):
 						# Caso setup
 						if (tmp[len(tmp) - 1].tag == 'add-zone-variable'):
 							pass
 						# Casos de cambio por movimiento de persona
 						elif (tmp[len(tmp) - 1].tag == 'move-person-zone'):
 							executer = [p for p in pclass if p.name == tmp[len(tmp) - 1].attrib['personId']][0]
-							dictionary = {'variable': child.attrib['variable'], 'value': child.attrib['value']}
+							zone = [z for z in zclass if \
+									z.name == child.attrib['zoneId'].lower().replace(' ','')][0]
+							dictionary = {'variable': child.attrib['variable'], 'value': child.attrib['value'], \
+											'zone': zone}
 							eclass.append(VarChangingEvent(executer, child.attrib['orden'], child.tag, \
 								dictionary))
 						elif (tmp[len(tmp) - 1].tag == 'move-device-zone' \
 							and tmp[len(tmp) - 2].tag == 'move-person-zone'):
 							executer = [p for p in pclass if p.name == tmp[len(tmp) - 2].attrib['personId']][0]
-							dictionary = {'variable': child.attrib['variable'], 'value': child.attrib['value']}
+							zone = [z for z in zclass if \
+									z.name == child.attrib['zoneId'].lower().replace(' ','')][0]
+							dictionary = {'variable': child.attrib['variable'], 'value': child.attrib['value'], \
+											'zone': zone}
 							eclass.append(VarChangingEvent(executer, child.attrib['orden'], child.tag, \
 								dictionary))
+						# Casos de modificaciones por executer mas cercano en script
 						else:
-							pass
+							last_move = [x for x in behavior if x.attrib['orden'] < child.attrib['orden'] and \
+											x.tag == 'move-person-zone' and \
+											x.attrib['zoneId'] == child.attrib['zoneId'].lower().replace(' ','')]
+							if (last_move):
+								zone = [z for z in zclass if \
+										z.name == child.attrib['zoneId'].lower().replace(' ','')][0]
+								dictionary = {'variable': child.attrib['variable'], 'value': child.attrib['value'], \
+												'zone': zone}
+								# Ultima persona que se movio a la zona
+								executer = last_move[len(last_move) - 1].attrib['personId']
+								executer = [p for p in pclass if p.name == executer]
+								eclass.append(VarChangingEvent(executer, child.attrib['orden'], child.tag, \
+									dictionary))
 
 		# CASO 3: set-device-property
 
@@ -899,7 +904,7 @@ def main(argv):
 			for child in behavior:
 				if (child.tag == 'set-device-property'):
 					tmp = [x for x in behavior if x.attrib['orden'] < child.attrib['orden']]
-					if (len(tmp) > 0):
+					if (tmp):
 						# caso setup inicial 1
 						if (tmp[len(tmp) - 1].tag == 'create-device'):
 							pass
@@ -912,18 +917,35 @@ def main(argv):
 							changedAttr = child.attrib['property']
 							changedValue = child.attrib['value']
 							changes = {'property': changedAttr, 'value': changedValue}
-							# Crearemos, a modo de test, clases con executer None
-							eclass.append(PropertyChangingEvent(None, child.attrib['orden'], \
-								device, changes))
-
-		# Si hay una sola persona, es el unico executer posible
-		if (len(people) == 1):
-			executer = pclass[0]
-			for elem in eclass:
-				if (isinstance(elem, PropertyChangingEvent)):
-					elem.executer = executer
-
-		# PENDIENTE: considerar cuando hay mas de una persona
+							# Si hay solo un user
+							if (len(people) == 1):
+								executer = pclass[0]
+								# Creo instancias
+								eclass.append(PropertyChangingEvent(executer, child.attrib['orden'], \
+									device, changes))
+							else:
+								# Buscamos zona del device, los mismo no suelen ser movibles
+								num_zones_dev = len(device.zones)
+								if (num_zones_dev == 1):
+									zone = device.zones[0]['zone']
+									last_move = [x for x in behavior if x.attrib['orden'] < child.attrib['orden'] and \
+												x.tag == 'move-person-zone' and \
+												x.attrib['zoneId'].lower().replace(' ','') == zone.name]
+									if (last_move):
+										executer = last_move[len(last_move) - 1].attrib['personId']
+										executer = [p for p in pclass if p.name == executer]
+										# Creo instancias
+										eclass.append(PropertyChangingEvent(executer, child.attrib['orden'], \
+											device, changes))
+									else:
+										# No puedo inferir por el ultimo movimiento a la zona del device
+										# porque no hay
+										eclass.append(PropertyChangingEvent(None, child.attrib['orden'], \
+											device, changes))
+								else:
+									# No puedo inferir por variedad de zonas del device
+									eclass.append(PropertyChangingEvent(None, child.attrib['orden'], \
+										device, changes))
 
 		# CASO 4: fault device
 
@@ -935,14 +957,15 @@ def main(argv):
 					dev = child.attrib['deviceId']
 					try:
 						# Ultima ubicacion del device
-						place = [x.attrib['zoneId'] for x in behavior if \
+						place = [x.attrib['zoneId'].lower().replace(' ','') for x in behavior if \
 						x.attrib['orden'] < child.attrib['orden'] and x.tag == 'move-device-zone' \
 						and x.attrib['deviceId'] == dev][0]
 						place = [x for x in zclass if x.name == place][0]
 						tmp = [x for x in behavior if x.attrib['orden'] < child.attrib['orden'] \
-						and x.tag == 'move-person-zone' and x.attrib['zoneId'] == place.name]
+						and x.tag == 'move-person-zone' and \
+						x.attrib['zoneId'].lower().replace(' ','') == place.name]
 						# Si hay eventos previos a la accion
-						if (len(tmp) > 0):
+						if (tmp):
 							# Persona que interactuo mas recientemente con ubicacion device
 							min_distance = min([x.attrib['orden'] for x in tmp])
 							closest_event = [x for x in tmp if x.attrib['orden'] == min_distance][0]
@@ -963,13 +986,13 @@ def main(argv):
 			for child in behavior:
 				if (child.tag == 'move-person-zone'):
 					executer = [x for x in pclass if x.name == child.attrib['personId']][0]
-					zone = [x for x in zclass if x.name == child.attrib['zoneId']][0]
+					zone = [x for x in zclass if x.name == child.attrib['zoneId'].lower().replace(' ','')][0]
 					eclass.append(MoveEvent(executer, child.attrib['orden'], child.tag, zone))
 
 		# CASO x: delay - DEBE IR AL FINAL
 
 		# Si hay acciones en lista de events, aniado a la lista
-		if (len(eclass) > 0):
+		if (eclass):
 			event_generator(tlist, eclass)
 		# Si no hay eventos creados aun
 		else:
@@ -988,9 +1011,6 @@ def main(argv):
 			# Llamo al event_generator sin contar el primer elemento de la lista
 			if (len(tlist) > 1):
 				event_generator(tlist[1:], eclass)
-
-		#for child in behavior:
-		#	print('Veamos, %s con orden %s\n'  % (child.tag, child.attrib['orden']))
 
 		# Ordenando segun posicion 
 		eclass.sort(key=positionOrdering)
@@ -1089,11 +1109,11 @@ def main(argv):
 										x.changedProperty['value'] == 'false' and \
 										e.device.name == x.device.name and e.position < x.position]
 						# Si la cerraron
-						if (len(closed_door) > 0):
+						if (closed_door):
 							# Revisamos tiempo entre open/close
 							time_bw_closing = [x.value for x in eventos if isinstance(x, TimeEvent) and \
 												x.position > e.position and x.position < closed_door[0].position]
-							if (len(time_bw_closing) > 0):
+							if (time_bw_closing):
 								time_bw_closing = reduce((lambda x, y: x + y), time_bw_closing)
 								if (time_bw_closing > MAX_MAIN_DOOR_OPEN_TIME):
 									elist.append({'position': e.position, 'executer': e.executer, \
@@ -1103,14 +1123,11 @@ def main(argv):
 							# Obtenemos tiempo transcurrido luego de apertura
 							time_opened = [x.value for x in eventos if isinstance(x, TimeEvent) and \
 											x.position > e.position]
-							if (len(time_opened) > 0):
+							if (time_opened):
 								time_opened = reduce((lambda x, y: x + y), time_opened)
 								if (time_opened > MAX_MAIN_DOOR_OPEN_TIME):
 									elist.append({'position': e.position, 'executer': e.executer, \
 										'error': 'Main door LET OPENED for much time'})
-							else:
-								pass
-								#print('Not enough data to analyze main door opening time patterns')
 					# 6. Sirena encendida
 					elif (e.device.type_name == 'iCasa.Siren' and \
 						e.changedProperty['value'] == 'true'):
@@ -1119,7 +1136,7 @@ def main(argv):
 				# Problemas relacionados a movimientos
 				elif (isinstance(e, MoveEvent)):
 					# 8. Sedentarismo
-					e_zone = e.zone.name.lower().replace(' ','')
+					e_zone = e.zone.name
 					if (e.event == 'move-person-zone' and e_zone == 'bedroom'):
 						# Obtenemos proximos moves a zones del mismo executer
 						next_moves = [x for x in eventos if isinstance(x, MoveEvent) and \
@@ -1130,7 +1147,7 @@ def main(argv):
 							# Tiempo transcurrido al momento del move al bedroom
 							delays = [x.value for x in eventos if isinstance(x, TimeEvent) and \
 							x.position < e.position]
-							if (len(delays) > 0):
+							if (delays):
 								# Si hay algun delay
 								time_before_move = reduce((lambda x, y: x + y), delays)
 								current_time = time_sim + time_before_move
@@ -1144,7 +1161,7 @@ def main(argv):
 							# Tiempo transcurrido al momento del move al bedroom
 							delays = [x.value for x in eventos if isinstance(x, TimeEvent) and \
 							x.position < e.position]
-							if (len(delays) > 0):
+							if (delays):
 								# Si hay algun delay
 								time_before_move = reduce((lambda x, y: x + y), delays)
 								current_time = time_sim + time_before_move
@@ -1161,11 +1178,11 @@ def main(argv):
 									x.position > e.position and x.event == 'move-person-zone' and \
 									x.executer == e.executer]
 						# Si hay movimientos futuros
-						if (len(next_moves) > 0):
+						if (next_moves):
 							# Se debe ubicar tiempo inicial y tiempo entre movimientos
 							delays = [x.value for x in eventos if isinstance(x, TimeEvent) and \
 							x.position < e.position]
-							if (len(delays) > 0):
+							if (delays):
 								# Determinamos tiempo inicial
 								time_before_move = reduce((lambda x, y: x + y), delays)
 								current_time = time_sim + time_before_move
@@ -1179,7 +1196,7 @@ def main(argv):
 							# Se debe ubicar tiempo inicial y tiempo entre movimientos
 							delays = [x.value for x in eventos if isinstance(x, TimeEvent) and \
 							x.position < e.position]
-							if (len(delays) > 0):
+							if (delays):
 								# Determinamos tiempo inicial
 								time_before_move = reduce((lambda x, y: x + y), delays)
 								current_time = time_sim + time_before_move
@@ -1188,7 +1205,13 @@ def main(argv):
 							else:
 								# El move es el primer evento
 								possibleAccident(eventos, e, e_zone, elist)
-			# 10. Idas al banio
+				# Problemas relacionados con cambios de variables zonales
+				elif (isinstance(e, VarChangingEvent)):
+					e_zone = e.change['zone'].name
+					# 7. Ubicacion al cocinar
+					if (e.change['variable'] == 'Temperature' and e_zone == 'kitchen'):
+						pass
+			# 10. Idas al banio, per situation
 			# Hallamos la totalidad del tiempo por cada situacion
 			situation_time = [x.value for x in eventos if isinstance(x, TimeEvent)]
 			situation_time = reduce((lambda x, y: x + y), situation_time)
@@ -1201,51 +1224,35 @@ def main(argv):
 									x.event == 'move-person-zone' and x.zone.name == 'bathroom']
 				# Suponiendo una unica persona, si hay eventos, los contamos
 				times_bathroom = len(went_to_bathroom)
-				bathroom_times.append(times_bathroom)
 				if (times_bathroom > 0):
 					pass
-					print('No apparent micturating problem')
+					#print('No apparent micturating problem')
 				else:
 					# Hay problema
 					executer = [x for x in pclass][0]
 					elist.append({'position': None, 'executer': executer.name, \
 						'error': 'Irregular micturating time'})
 
-		# Vemos si hay problema con la totalidad de la sim
+		# 10. Idas al banio, whole simulation
 		total_time = reduce((lambda x, y: x + y), total_time)
-		# Si el tiempo de una situacion es mayor a 4 horas, se debio ir, idealmente
-		# al menos una vez a banio
-		if (total_time > IDEAL_TIME_BW_MICTURITION):
-			# Revisamos si fuimos al menos una vez al banio en toda la sim
-			total_bathroom_times = reduce((lambda x, y: x + y), bathroom_times)
-			# Suponiendo una unica persona, si hay eventos, los contamos
-			if (total_bathroom_times > 0):
-				pass
-				#print('No apparent micturating problem')
-			else:
-				# Hay problema
-				executer = [x for x in pclass][0]
-				elist.append({'position': None, 'executer': executer.name, \
-					'error': 'Irregular micturating time'})
-		# 11. Salir al menos una vez de casa
-		# Se revisan las veces que salimos
-		if (times_out):
-			pass
-			#times_out = reduce((lambda x, y: x + y), times_out)
-			#print('Got out of house %d time(s)' % (times_out))
-		else:
-			if (total_time > datetime.timedelta(hours=24)):
-				# Hay un problema
-				executer = [x for x in pclass][0]
-				elist.append({'position': None, 'executer': executer.name, 'error': 'Never going out'})
-
-		# 12. Dressing
-		# No abrir el closet en un periodo largo de tiempo (24h+) sugiere problema
 		if (total_time > datetime.timedelta(hours=24)):
 			# Obtengo numero de dias a partir del todo
 			number_days = total_time.days
+			# Numero de veces promedio que debio irse al banio
+			average_micturation_times = number_days*AVERAGE_MICTURITION_FREQ
+			# Desviacion estandar
+			deviation = 2*number_days
+			# Rango de cantidad de idas al banio
+			micturation_range = range(average_micturation_times - deviation, \
+										average_micturation_times + deviation + 1)
 			for s in sclass:
 				eventos = s.get_mid_events()
+				went_to_bathroom = [x for x in eventos if isinstance(x, MoveEvent) and \
+									x.event == 'move-person-zone' and x.zone.name == 'bathroom']
+				bathroom_times.append(len(went_to_bathroom))
+
+				# 12. Dressing, veremos si el closet fue abierto alguna vez durante el
+				# o los dias
 				for e in eventos:
 					if (isinstance(e, PropertyChangingEvent)):
 						if (e.device.type_name == 'iCasa.DoorWindowSensor' and \
@@ -1262,11 +1269,35 @@ def main(argv):
 			if (times_wd_opened):
 				times_wd_opened = reduce((lambda x, y: x + y), times_wd_opened)
 				if (times_wd_opened >= number_days):
-					# No hay problema
+					# Abri el closet al menos una vez al dia
 					pass
 				else:
 					# No se ha cambiado
 					elist.append({'position': None, 'executer': executer, 'error': 'Not changing clothes'})
+
+			# Siguiendo con 10
+			bathroom_times = reduce((lambda x, y: x + y), bathroom_times)
+			# Comprobamos si la cantidad de veces en la sim esta ok
+			if (bathroom_times in micturation_range):
+				# Estoy dentro del rango
+				pass
+			else:
+				# Suponiendo existencia de solo una persona
+				executer = [x for x in pclass][0]
+				elist.append({'position': None, 'executer': executer.name, \
+					'error': 'Irregular micturating time'})						
+
+		# 11. Salir al menos una vez de casa
+		# Se revisan las veces que salimos
+		if (times_out):
+			pass
+			#times_out = reduce((lambda x, y: x + y), times_out)
+			#print('Got out of house %d time(s)' % (times_out))
+		else:
+			if (total_time > datetime.timedelta(hours=24)):
+				# Hay un problema
+				executer = [x for x in pclass][0]
+				elist.append({'position': None, 'executer': executer.name, 'error': 'Never going out'})
 
 		for elem in elist:
 			if (elem['error'] == 'FloodSensor detected a problem'):
