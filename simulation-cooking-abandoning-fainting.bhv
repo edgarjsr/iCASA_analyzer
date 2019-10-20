@@ -109,13 +109,13 @@
 	<modify-zone-variable zoneId="kitchen" variable="Electricity" value="11.3" />
 	<modify-zone-variable zoneId="kitchen" variable="Illuminance" value="205.2" />
 	<!-- Cocinando -->
-	<delay value="3" unit="h" />
+	<delay value="2" unit="h" />
 	<!-- Me movi a la sala mientras cocinaba -->
 	<move-person-zone personId="Marie" zoneId="livingroom" />
 	<set-device-property deviceId="Pres-A1255D-D" property="presenceSensor.sensedPresence" value="false"/>
 	<delay value="25" unit="s" />
 	<set-device-property deviceId="Pres-B1255D-D" property="presenceSensor.sensedPresence" value="true"/>
-	<delay value="5" unit="m" />
+	<delay value="47" unit="m" />
 	<!-- Volvi a la cocina -->
 	<move-person-zone personId="Marie" zoneId="kitchen" />
 	<set-device-property deviceId="Pres-B1255D-D" property="presenceSensor.sensedPresence" value="false"/>
@@ -127,7 +127,7 @@
 	<modify-zone-variable zoneId="kitchen" variable="Electricity" value="0.0" />
 	<modify-zone-variable zoneId="kitchen" variable="Illuminance" value="200.0" />
 	<!-- Me voy a comer -->
-	<delay value="3" unit="m" />
+	<delay value="5" unit="h" />
 	<move-person-zone personId="Marie" zoneId="livingroom" />
 	<set-device-property deviceId="Pres-A1255D-D" property="presenceSensor.sensedPresence" value="false"/>
 	<delay value="25" unit="s" />
