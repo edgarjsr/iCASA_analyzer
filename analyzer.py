@@ -1705,6 +1705,8 @@ def main(argv):
 						p.aggir_const['LOCATION'] = False
 						# Bad coherence
 						p.aggir_const['COHERENCE'] = False
+						# Bad houseleeping
+						p.aggir_const['HOUSEKEEPING'] = False
 
 		# Devolvemos respuesta
 		for p in pclass:
